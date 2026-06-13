@@ -43,5 +43,5 @@ static_sites:
 databases:
   - name: campus-db
     engine: PG
-    version: "12"
+    version: "16"
     production: false
