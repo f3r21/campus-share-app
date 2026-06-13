@@ -12,6 +12,21 @@ services:
     routes:
       - path: /api
       - path: /uploads
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+        value: ${campus-db.DATABASE_URL}
+      - key: SPACES_ACCESS_KEY
+        scope: RUN_TIME
+        value: ""
+      - key: SPACES_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: ""
+      - key: SPACES_BUCKET_NAME
+        scope: RUN_TIME
+        value: ""
 
 static_sites:
   - name: frontend
@@ -24,3 +39,9 @@ static_sites:
     output_dir: dist
     routes:
       - path: /
+
+databases:
+  - name: campus-db
+    engine: PG
+    version: "12"
+    production: false
