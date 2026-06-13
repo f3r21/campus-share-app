@@ -214,6 +214,12 @@ app.get('/api', (req, res) => {
     res.status(200).send('OK');
 });
 
+// TEMPORAL: verificación de Sentry. Lanza un error no controlado a propósito
+// para confirmar que Sentry lo captura. SE ELIMINA tras la prueba.
+app.get('/api/debug/sentry-test', (req, res) => {
+    throw new Error('Sentry test error (intencional) — verificación temporal');
+});
+
 // Inicio de sesión con Google (Google Identity Services).
 // El frontend envía el ID token (JWT firmado por Google) y aquí se verifica
 // criptográficamente firma, audience y expiración con google-auth-library.
