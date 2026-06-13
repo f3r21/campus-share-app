@@ -24,9 +24,14 @@ if (process.env.DATABASE_URL) {
         connectionString: process.env.DATABASE_URL.replace('?sslmode=require', ''),
         ssl: { rejectUnauthorized: false }
     });
+
+    pool.on('connect', client => {
+        client.query('SET search_path TO campus_share, public');
+    });
     
     const initDb = async () => {
         try {
+            await pool.query('CREATE SCHEMA IF NOT EXISTS campus_share;');
             const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
             const seed = fs.readFileSync(path.join(__dirname, 'db', 'seed.sql'), 'utf8');
             await pool.query(schema);
