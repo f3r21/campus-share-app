@@ -4,12 +4,13 @@ import MaterialCard from './components/MaterialCard';
 import UploadModal from './components/UploadModal';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import { BookOpen, Search, LogOut } from 'lucide-react';
+import { BookOpen, Search, LogOut, ArrowUpDown } from 'lucide-react';
 
 function Dashboard({ auth, setAuth }) {
   const [materials, setMaterials] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('upvotes');
 
   const fetchMaterials = () => {
     fetch('/api/materials')
@@ -31,7 +32,12 @@ function Dashboard({ auth, setAuth }) {
   const filteredMaterials = materials.filter(m => 
     m.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
     m.course_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  ).sort((a, b) => {
+    if (sortBy === 'upvotes') return b.upvotes - a.upvotes;
+    if (sortBy === 'newest') return new Date(b.created_at) - new Date(a.created_at);
+    if (sortBy === 'oldest') return new Date(a.created_at) - new Date(b.created_at);
+    return 0;
+  });
 
   return (
     <div className="min-h-screen">
@@ -73,15 +79,31 @@ function Dashboard({ auth, setAuth }) {
             <h2 className="text-3xl font-bold mb-2">Apuntes Destacados</h2>
             <p className="text-text-muted">Encuentra material de estudio de la comunidad UCSP</p>
           </div>
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
-            <input 
-              type="text" 
-              placeholder="Buscar curso o tema..."
-              className="w-full bg-surface border border-border rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-primary transition-colors text-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+            <div className="relative w-full md:w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+              <input 
+                type="text" 
+                placeholder="Buscar curso o tema..."
+                className="w-full bg-surface border border-border rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-primary transition-colors text-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="relative">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
+                <ArrowUpDown className="w-4 h-4" />
+              </div>
+              <select
+                className="w-full bg-surface border border-border rounded-lg pl-9 pr-8 py-2.5 focus:outline-none focus:border-primary transition-colors text-sm cursor-pointer"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              >
+                <option value="upvotes">Más Votados</option>
+                <option value="newest">Más Recientes</option>
+                <option value="oldest">Más Antiguos</option>
+              </select>
+            </div>
           </div>
         </div>
 
