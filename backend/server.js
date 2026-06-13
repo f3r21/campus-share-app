@@ -27,7 +27,6 @@ if (process.env.DATABASE_URL) {
     
     const initDb = async () => {
         try {
-            await pool.query('GRANT ALL ON SCHEMA public TO CURRENT_USER');
             const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
             const seed = fs.readFileSync(path.join(__dirname, 'db', 'seed.sql'), 'utf8');
             await pool.query(schema);
@@ -37,7 +36,11 @@ if (process.env.DATABASE_URL) {
             console.error("❌ Error inicializando PostgreSQL:", error.message);
         }
     };
-    initDb();
+    
+    // Esperar 15 segundos antes de inicializar para permitir que DO App Platform termine de provisionar permisos
+    setTimeout(() => {
+        initDb();
+    }, 15000);
 } else {
     console.log("⚠️ DATABASE_URL no encontrada. Usando fallback local (limitado).");
 }
@@ -82,8 +85,20 @@ const authenticateToken = (req, res, next) => {
 
 // --- RUTAS DE LA API ---
 
-// Autenticación
-app.post('/api/auth/register', async (req, res) => {
+app.get('/api/init', async (req, res) => {
+    try {
+        const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
+        const seed = fs.readFileSync(path.join(__dirname, 'db', 'seed.sql'), 'utf8');
+        await pool.query(schema);
+        await pool.query(seed);
+        res.json({ message: "Base de datos inicializada correctamente" });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Register Auth endpoint
+app.post('/api/register', async (req, res) => {
     try {
         const { email, password } = req.body;
         if (!email.endsWith('@ucsp.edu.pe')) {
