@@ -27,10 +27,7 @@ if (process.env.DATABASE_URL) {
     
     const initDb = async () => {
         try {
-            const user = await pool.query('SELECT current_user, current_database()');
-            console.log("USER INFO:", JSON.stringify(user.rows));
-            console.log("ALL ENV VARS:", Object.keys(process.env).filter(k => k.includes('DATABASE') || k.includes('DB') || k.includes('POSTGRES')));
-            
+            await pool.query('GRANT ALL ON SCHEMA public TO CURRENT_USER');
             const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
             const seed = fs.readFileSync(path.join(__dirname, 'db', 'seed.sql'), 'utf8');
             await pool.query(schema);
