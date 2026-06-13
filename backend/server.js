@@ -78,6 +78,10 @@ const authenticateToken = (req, res, next) => {
 
 // --- RUTAS DE LA API ---
 
+// Healthcheck para DigitalOcean
+app.get('/', (req, res) => res.status(200).send('OK'));
+app.get('/api', (req, res) => res.status(200).send('OK'));
+
 app.get('/api/init', async (req, res) => {
     try {
         const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
