@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import MaterialCard from './components/MaterialCard';
 import UploadModal from './components/UploadModal';
 import Login from './pages/Login';
-import Register from './pages/Register';
 import { Search, LogOut, ArrowUpDown, Plus } from 'lucide-react';
 
 function Dashboard({ auth, setAuth }) {
@@ -167,7 +166,6 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={auth ? <Navigate to="/" /> : <Login setAuth={setAuth} />} />
-        <Route path="/register" element={auth ? <Navigate to="/" /> : <Register />} />
         <Route path="/" element={auth ? <Dashboard auth={auth} setAuth={setAuth} /> : <Navigate to="/login" />} />
       </Routes>
     </BrowserRouter>

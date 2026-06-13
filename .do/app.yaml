@@ -19,11 +19,13 @@ services:
         preserve_path_prefix: true
       - path: /uploads
         preserve_path_prefix: true
-    # SECRETOS: configura los valores en el dashboard de DO (Settings ->
-    # backend -> Environment Variables, encriptados). NO los pongas aquí.
+    # VARIABLES: configura los valores en el dashboard de DO (Settings ->
+    # backend -> Environment Variables). NO pongas secretos en este archivo.
     #   - DATABASE_URL (obligatorio; cadena de conexión Postgres de Neon/Supabase,
     #     gratis. Debe forzar SSL, p. ej. ...neon.tech/db?sslmode=require).
     #   - JWT_SECRET (obligatorio; genera uno con `openssl rand -base64 48`).
+    #   - GOOGLE_CLIENT_ID (obligatorio para el login; MISMO valor que el
+    #     VITE_GOOGLE_CLIENT_ID del frontend; sin él /api/auth/google da 503).
     #   - SPACES_ACCESS_KEY / SPACES_SECRET_KEY / SPACES_BUCKET_NAME
     #     (opcionales; necesarios solo para uploads persistentes en Spaces).
     envs:
@@ -33,6 +35,8 @@ services:
       - key: JWT_SECRET
         scope: RUN_TIME
         type: SECRET
+      - key: GOOGLE_CLIENT_ID
+        scope: RUN_TIME
       - key: SPACES_ACCESS_KEY
         scope: RUN_TIME
         type: SECRET
@@ -52,5 +56,11 @@ static_sites:
     build_command: npm run build
     output_dir: dist
     catchall_document: index.html
+    # VITE_GOOGLE_CLIENT_ID se incrusta en el build (Vite lo inyecta en tiempo
+    # de compilación). Debe ser el MISMO Client ID que GOOGLE_CLIENT_ID del
+    # backend. Configúralo en el dashboard de DO (componente frontend).
+    envs:
+      - key: VITE_GOOGLE_CLIENT_ID
+        scope: BUILD_TIME
     routes:
       - path: /

@@ -1,28 +1,37 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { GoogleLogin } from '@react-oauth/google';
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+const UCSP_DOMAIN = 'ucsp.edu.pe';
 
 export default function Login({ setAuth }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const handleCredential = async (credentialResponse) => {
+    const credential = credentialResponse?.credential;
+    if (!credential) {
+      setError('No se recibió la credencial de Google. Inténtalo de nuevo.');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ credential }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al iniciar sesión');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'No se pudo iniciar sesión con Google.');
+      }
 
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
@@ -35,6 +44,10 @@ export default function Login({ setAuth }) {
     }
   };
 
+  const handleError = () => {
+    setError('No se pudo completar el inicio de sesión con Google. Inténtalo de nuevo.');
+  };
+
   return (
     <main className="flex min-h-screen items-center justify-center px-5 py-12">
       <motion.section
@@ -45,12 +58,16 @@ export default function Login({ setAuth }) {
         className="w-full max-w-md border border-line bg-surface p-9"
       >
         <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-accent">
-          CampusShare UCSP
+          CampusShare · UCSP
         </p>
         <h1 id="login-heading" className="mt-3 text-4xl font-medium leading-tight tracking-tight text-ink">
-          Bienvenido de vuelta
+          Acceso a la comunidad UCSP
         </h1>
         <span aria-hidden="true" className="mt-4 mb-6 block h-px w-12 bg-accent" />
+
+        <p className="mb-8 text-base leading-relaxed text-muted">
+          Inicia sesión con tu cuenta institucional de Google para verificar que eres parte de la UCSP.
+        </p>
 
         {error && (
           <div role="alert" className="mb-6 border-l-2 border-accent bg-paper p-3 text-sm text-accent">
@@ -58,51 +75,38 @@ export default function Login({ setAuth }) {
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-5">
-          <div>
-            <label htmlFor="login-email" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-              Correo institucional
-            </label>
-            <input
-              id="login-email"
-              type="email"
-              required
-              autoComplete="email"
-              placeholder="usuario@ucsp.edu.pe"
-              className="w-full rounded-[0.375rem] border border-line bg-paper px-4 py-3 text-ink transition-colors placeholder:text-muted/60 hover:border-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+        {GOOGLE_CLIENT_ID ? (
+          <div className="flex flex-col gap-4">
+            <div
+              aria-busy={loading}
+              className={loading ? 'pointer-events-none opacity-60 transition-opacity' : 'transition-opacity'}
+            >
+              <GoogleLogin
+                onSuccess={handleCredential}
+                onError={handleError}
+                hosted_domain={UCSP_DOMAIN}
+                locale="es"
+                shape="rectangular"
+                size="large"
+                text="signin_with"
+                width="332"
+              />
+            </div>
+            {loading && (
+              <p className="text-xs uppercase tracking-[0.12em] text-muted">
+                Verificando tu cuenta…
+              </p>
+            )}
           </div>
-          <div>
-            <label htmlFor="login-password" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-              Contraseña
-            </label>
-            <input
-              id="login-password"
-              type="password"
-              required
-              autoComplete="current-password"
-              placeholder="••••••••"
-              className="w-full rounded-[0.375rem] border border-line bg-paper px-4 py-3 text-ink transition-colors placeholder:text-muted/60 hover:border-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-2 w-full rounded-[0.375rem] bg-accent py-3 font-medium text-paper transition-colors hover:bg-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
-          >
-            {loading ? 'Iniciando...' : 'Iniciar Sesión'}
-          </button>
-        </form>
+        ) : (
+          <p className="border-l-2 border-line bg-paper p-3 text-sm text-muted">
+            El inicio de sesión con Google aún no está configurado.
+          </p>
+        )}
 
-        <p className="mt-7 text-sm text-muted">
-          ¿No tienes una cuenta?{' '}
-          <Link to="/register" className="font-medium text-accent underline decoration-1 underline-offset-4 transition-colors hover:text-ink">
-            Regístrate
-          </Link>
+        <p className="mt-8 text-xs leading-relaxed text-muted">
+          Solo se admiten cuentas institucionales{' '}
+          <span className="font-medium text-ink">@ucsp.edu.pe</span>.
         </p>
       </motion.section>
     </main>

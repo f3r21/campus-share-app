@@ -17,9 +17,15 @@ CREATE TABLE IF NOT EXISTS courses (
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migración idempotente para bases de datos ya existentes (p. ej. Neon en prod):
+-- los usuarios de Google no tienen contraseña, así que password_hash debe ser
+-- nullable. Quitar NOT NULL en una columna ya nullable es un no-op en Postgres,
+-- por lo que es seguro ejecutarlo en cada arranque vía initDb.
+ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
 
 CREATE TABLE IF NOT EXISTS materials (
     id SERIAL PRIMARY KEY,

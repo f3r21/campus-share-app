@@ -4,11 +4,11 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { Pool } = require('pg');
+const { OAuth2Client } = require('google-auth-library');
 require('dotenv').config();
 
 const app = express();
@@ -20,6 +20,13 @@ if (!JWT_SECRET) {
     console.error('[startup] ❌ FATAL: falta la variable de entorno JWT_SECRET. Configúrala (p. ej. `openssl rand -base64 48`).');
     process.exit(1);
 }
+
+// Google Sign-In: el Client ID se usa como "audience" al verificar el ID token.
+// NO se hace fail-fast si falta: el servidor debe arrancar para el resto de
+// endpoints; la ruta /api/auth/google responde 503 cuando no está configurado.
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
+const UCSP_DOMAIN = 'ucsp.edu.pe';
 
 // Detrás del proxy de DigitalOcean: necesario para que el rate-limit use la IP real.
 app.set('trust proxy', 1);
@@ -174,50 +181,65 @@ app.get('/api', (req, res) => {
     res.status(200).send('OK');
 });
 
-// Register Auth endpoint
-app.post('/api/auth/register', authLimiter, async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        if (!email || !password) {
-            return res.status(400).json({ error: "Email y contraseña son obligatorios" });
-        }
-        if (!email.endsWith('@ucsp.edu.pe')) {
-            return res.status(400).json({ error: "Solo se permiten correos de la UCSP" });
-        }
-        if (password.length < 8) {
-            return res.status(400).json({ error: "La contraseña debe tener al menos 8 caracteres" });
-        }
-
-        const existing = (await pool.query('SELECT * FROM users WHERE email = $1', [email])).rows[0];
-        if (existing) {
-            return res.status(400).json({ error: "El correo ya está registrado" });
-        }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-        await pool.query('INSERT INTO users (email, password_hash) VALUES ($1, $2)', [email, hashedPassword]);
-        res.status(201).json({ message: "Usuario registrado exitosamente" });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Error interno del servidor' });
+// Inicio de sesión con Google (Google Identity Services).
+// El frontend envía el ID token (JWT firmado por Google) y aquí se verifica
+// criptográficamente firma, audience y expiración con google-auth-library.
+// Solo se admiten cuentas institucionales de la UCSP (@ucsp.edu.pe).
+app.post('/api/auth/google', authLimiter, async (req, res) => {
+    const { credential } = req.body;
+    if (!credential) {
+        return res.status(400).json({ error: "Falta el credential de Google" });
     }
-});
+    if (!GOOGLE_CLIENT_ID) {
+        console.error('[auth/google] ❌ GOOGLE_CLIENT_ID no configurado. Define la variable de entorno con el mismo Client ID que el frontend (VITE_GOOGLE_CLIENT_ID).');
+        return res.status(503).json({ error: "Autenticación con Google no configurada" });
+    }
 
-app.post('/api/auth/login', authLimiter, async (req, res) => {
+    // Paso 1: verificación criptográfica del ID token (firma de Google,
+    // audience = Client ID, expiry). Un fallo aquí => token inválido/expirado => 401.
+    let payload;
     try {
-        const { email, password } = req.body;
-        if (!email || !password) {
-            return res.status(400).json({ error: "Email y contraseña son obligatorios" });
-        }
-        const user = (await pool.query('SELECT * FROM users WHERE email = $1', [email])).rows[0];
+        const ticket = await googleClient.verifyIdToken({
+            idToken: credential,
+            audience: GOOGLE_CLIENT_ID
+        });
+        payload = ticket.getPayload();
+    } catch (error) {
+        console.error('[auth/google] Token de Google inválido o expirado:', error.message);
+        return res.status(401).json({ error: "Token de Google inválido" });
+    }
 
-        if (!user || !(await bcrypt.compare(password, user.password_hash))) {
-            return res.status(401).json({ error: "Credenciales inválidas" });
+    // Paso 2: autorización + alta/login. Errores aquí (p. ej. BD) => 500 genérico.
+    try {
+        // Correo verificado + dominio Workspace (hd) de la UCSP. hd es la claim
+        // autoritativa del dominio; el sufijo del email se valida como defensa
+        // en profundidad.
+        const email = payload.email;
+        const isUcsp =
+            payload.email_verified === true &&
+            payload.hd === UCSP_DOMAIN &&
+            !!email &&
+            email.toLowerCase().endsWith(`@${UCSP_DOMAIN}`);
+
+        if (!isUcsp) {
+            return res.status(403).json({ error: "Debes iniciar sesión con tu cuenta institucional de la UCSP (@ucsp.edu.pe)" });
+        }
+
+        const normalizedEmail = email.toLowerCase();
+
+        // Buscar usuario por email; si no existe, crearlo (sin password_hash).
+        let user = (await pool.query('SELECT id, email FROM users WHERE email = $1', [normalizedEmail])).rows[0];
+        if (!user) {
+            user = (await pool.query(
+                'INSERT INTO users (email) VALUES ($1) RETURNING id, email',
+                [normalizedEmail]
+            )).rows[0];
         }
 
         const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '24h' });
         res.json({ token, user: { id: user.id, email: user.email } });
     } catch (error) {
-        console.error(error);
+        console.error('[auth/google] Error procesando el inicio de sesión:', error.message);
         res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
