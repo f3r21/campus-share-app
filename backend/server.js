@@ -21,7 +21,7 @@ let pool = null;
 if (process.env.DATABASE_URL) {
     console.log("Conectando a PostgreSQL de DigitalOcean...");
     pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
+        connectionString: process.env.DATABASE_URL.replace('?sslmode=require', ''),
         ssl: { rejectUnauthorized: false }
     });
     
