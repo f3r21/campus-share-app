@@ -124,6 +124,16 @@ if (process.env.SPACES_ACCESS_KEY && process.env.SPACES_SECRET_KEY) {
 }
 const BUCKET_NAME = process.env.SPACES_BUCKET_NAME || "campus-share-bucket";
 
+// Diagnóstico de almacenamiento al arranque (sin filtrar secretos: solo presencia).
+console.log(
+    '[storage] s3=' + !!s3Client +
+    ' access=' + (process.env.SPACES_ACCESS_KEY ? 'set(' + process.env.SPACES_ACCESS_KEY.length + ')' : 'MISSING') +
+    ' secret=' + (process.env.SPACES_SECRET_KEY ? 'set(' + process.env.SPACES_SECRET_KEY.length + ')' : 'MISSING') +
+    ' endpoint=' + (process.env.SPACES_ENDPOINT || 'MISSING') +
+    ' bucket=' + (process.env.SPACES_BUCKET_NAME || 'MISSING') +
+    ' publicUrl=' + (process.env.STORAGE_PUBLIC_URL ? 'set' : 'MISSING')
+);
+
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
