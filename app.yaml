@@ -1,0 +1,26 @@
+name: campus-share-app
+region: nyc
+services:
+  - name: backend
+    github:
+      branch: main
+      deploy_on_push: true
+      repo: f3r21/campus-share-app
+    source_dir: backend
+    run_command: node server.js
+    http_port: 3001
+    routes:
+      - path: /api
+      - path: /uploads
+
+static_sites:
+  - name: frontend
+    github:
+      branch: main
+      deploy_on_push: true
+      repo: f3r21/campus-share-app
+    source_dir: frontend
+    build_command: npm run build
+    output_dir: dist
+    routes:
+      - path: /
