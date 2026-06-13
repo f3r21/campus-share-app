@@ -1,13 +1,16 @@
-INSERT INTO careers (id, name) VALUES 
+-- Datos iniciales para CampusShare (PostgreSQL)
+-- Idempotente: re-ejecutar en cada arranque nunca duplica filas.
+
+INSERT INTO careers (id, name) VALUES
 (1, 'Ciencia de la Computación'),
 (2, 'Administración de Negocios'),
 (3, 'Ingeniería Civil'),
 (4, 'Derecho'),
 (5, 'Arquitectura y Urbanismo'),
 (6, 'Medicina Humana')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO courses (career_id, name, semester) VALUES 
+INSERT INTO courses (career_id, name, semester) VALUES
 -- Ciencia de la Computación
 (1, 'Programación I', 1),
 (1, 'Cálculo I', 1),
@@ -37,4 +40,8 @@ INSERT INTO courses (career_id, name, semester) VALUES
 (6, 'Anatomía Humana', 1),
 (6, 'Fisiología', 3),
 (6, 'Farmacología', 5)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (career_id, name) DO NOTHING;
+
+-- Resincroniza la secuencia de careers tras insertar ids explícitos,
+-- para que cualquier INSERT futuro (sin id) no choque con un id existente.
+SELECT setval(pg_get_serial_sequence('careers', 'id'), (SELECT COALESCE(MAX(id), 1) FROM careers));

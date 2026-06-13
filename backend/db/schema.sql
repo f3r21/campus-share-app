@@ -1,36 +1,33 @@
--- Esquema de Base de Datos para CampusShare (SQLite)
+-- Esquema de Base de Datos para CampusShare (PostgreSQL)
+-- Idempotente: seguro de ejecutar en cada arranque, sin pérdida de datos.
 
-DROP TABLE IF EXISTS materials;
-DROP TABLE IF EXISTS courses;
-DROP TABLE IF EXISTS careers;
-DROP TABLE IF EXISTS users;
-
-CREATE TABLE careers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS careers (
+    id SERIAL PRIMARY KEY,
     name TEXT UNIQUE NOT NULL
 );
 
-CREATE TABLE courses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS courses (
+    id SERIAL PRIMARY KEY,
     career_id INTEGER REFERENCES careers(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
-    semester INTEGER NOT NULL
+    semester INTEGER NOT NULL,
+    UNIQUE (career_id, name)
 );
 
-CREATE TABLE users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
     email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE materials (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS materials (
+    id SERIAL PRIMARY KEY,
     course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
     description TEXT,
     file_url TEXT NOT NULL,
     upvotes INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );

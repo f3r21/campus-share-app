@@ -3,19 +3,62 @@
 @theme {
   --color-primary: #a855f7;
   --color-primary-dark: #9333ea;
+  --color-accent: #22d3ee;
   --color-background: #0f172a;
   --color-surface: #1e293b;
   --color-text-main: #f8fafc;
   --color-text-muted: #94a3b8;
   --color-border: #334155;
+
+  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Sora", "Inter", system-ui, sans-serif;
+
+  --radius-card: 1rem;
+
+  --shadow-card: 0 1px 2px rgba(2, 6, 23, 0.4), 0 12px 32px -12px rgba(2, 6, 23, 0.65);
+  --shadow-glow: 0 0 0 1px rgba(168, 85, 247, 0.18), 0 18px 48px -18px rgba(168, 85, 247, 0.55);
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
+  position: relative;
+  min-height: 100vh;
   background-color: var(--color-background);
   color: var(--color-text-main);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   margin: 0;
   padding: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Layered atmospheric depth — fixed, GPU-cheap radial glows */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 60rem at 12% -10%, rgba(168, 85, 247, 0.12), transparent 60%),
+    radial-gradient(50rem 50rem at 100% 0%, rgba(34, 211, 238, 0.1), transparent 55%),
+    radial-gradient(45rem 45rem at 50% 120%, rgba(147, 51, 234, 0.08), transparent 60%);
+}
+
+h1,
+h2 {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+/* Accessible focus ring using the accent color */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Scrollbar premium styling */
@@ -23,12 +66,26 @@ body {
   width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--color-background); 
+  background: var(--color-background);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border); 
+  background: var(--color-border);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted); 
+  background: var(--color-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

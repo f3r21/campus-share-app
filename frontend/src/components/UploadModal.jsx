@@ -73,40 +73,54 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, auth }) 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+          onClick={onClose}
+        >
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="upload-modal-heading"
+            initial={{ opacity: 0, scale: 0.95, y: 24 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="bg-surface border border-border w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden"
+            exit={{ opacity: 0, scale: 0.95, y: 24 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg overflow-hidden rounded-3xl border border-border/70 bg-surface/85 shadow-card backdrop-blur-2xl"
           >
-            <div className="flex justify-between items-center p-6 border-b border-border bg-surface/50">
-              <h2 className="text-xl font-semibold flex items-center gap-2">
-                <UploadCloud className="text-primary w-6 h-6" />
+            <div className="flex items-center justify-between border-b border-border/70 bg-surface/40 p-6">
+              <h2 id="upload-modal-heading" className="flex items-center gap-2 font-display text-xl font-semibold tracking-tight">
+                <UploadCloud className="h-6 w-6 text-accent" />
                 Subir Apunte
               </h2>
-              <button 
+              <button
+                type="button"
                 onClick={onClose}
-                className="text-text-muted hover:text-text-main transition-colors p-1 rounded-full hover:bg-border"
+                aria-label="Cerrar"
+                className="rounded-full p-1.5 text-text-muted transition-colors hover:bg-border hover:text-text-main active:scale-90"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-5 p-6">
               {error && (
-                <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded-lg text-sm">
+                <div role="alert" className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-400">
                   {error}
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text-muted">Carrera</label>
-                  <select 
-                    required 
-                    className="bg-background border border-border rounded-lg px-3 py-2.5 focus:outline-none focus:border-primary transition-colors text-sm"
-                    value={formData.career_id} 
+                  <label htmlFor="upload-career" className="text-sm font-medium text-text-muted">Carrera</label>
+                  <select
+                    id="upload-career"
+                    required
+                    className="rounded-lg border border-border bg-background/60 px-3 py-2.5 text-sm text-text-main transition-colors hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    value={formData.career_id}
                     onChange={e => setFormData({ ...formData, career_id: e.target.value })}
                   >
                     <option value="">Selecciona una carrera...</option>
@@ -115,12 +129,13 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, auth }) 
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text-muted">Curso</label>
-                  <select 
-                    required 
+                  <label htmlFor="upload-course" className="text-sm font-medium text-text-muted">Curso</label>
+                  <select
+                    id="upload-course"
+                    required
                     disabled={!formData.career_id}
-                    className="bg-background border border-border rounded-lg px-3 py-2.5 focus:outline-none focus:border-primary transition-colors text-sm disabled:opacity-50"
-                    value={formData.course_id} 
+                    className="rounded-lg border border-border bg-background/60 px-3 py-2.5 text-sm text-text-main transition-colors hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50"
+                    value={formData.course_id}
                     onChange={e => setFormData({ ...formData, course_id: e.target.value })}
                   >
                     <option value="">Selecciona un curso...</option>
@@ -130,72 +145,72 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, auth }) 
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-text-muted">Título del Apunte</label>
-                <input 
-                  type="text" 
-                  required 
+                <label htmlFor="upload-title" className="text-sm font-medium text-text-muted">Título del Apunte</label>
+                <input
+                  id="upload-title"
+                  type="text"
+                  required
                   placeholder="Ej. Resumen Primer Parcial"
-                  className="bg-background border border-border rounded-lg px-4 py-2.5 focus:outline-none focus:border-primary transition-colors"
-                  value={formData.title} 
-                  onChange={e => setFormData({ ...formData, title: e.target.value })} 
+                  className="rounded-lg border border-border bg-background/60 px-4 py-2.5 text-text-main transition-colors placeholder:text-text-muted/60 hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  value={formData.title}
+                  onChange={e => setFormData({ ...formData, title: e.target.value })}
                 />
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-text-muted">Descripción (Opcional)</label>
-                <textarea 
+                <label htmlFor="upload-description" className="text-sm font-medium text-text-muted">Descripción (Opcional)</label>
+                <textarea
+                  id="upload-description"
                   rows="3"
                   placeholder="Detalles sobre el contenido..."
-                  className="bg-background border border-border rounded-lg px-4 py-2.5 focus:outline-none focus:border-primary transition-colors resize-none"
-                  value={formData.description} 
-                  onChange={e => setFormData({ ...formData, description: e.target.value })} 
+                  className="resize-none rounded-lg border border-border bg-background/60 px-4 py-2.5 text-text-main transition-colors placeholder:text-text-muted/60 hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  value={formData.description}
+                  onChange={e => setFormData({ ...formData, description: e.target.value })}
                 />
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-text-muted">Archivo PDF</label>
-                <div className="flex items-center justify-center w-full">
-                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-border border-dashed rounded-xl cursor-pointer bg-background hover:border-primary hover:bg-background/80 transition-colors">
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                            <UploadCloud className="w-8 h-8 mb-3 text-text-muted" />
-                            <p className="mb-2 text-sm text-text-muted">
-                              <span className="font-semibold text-primary">Haz clic para subir</span> o arrastra
-                            </p>
-                            <p className="text-xs text-text-muted truncate max-w-xs">
-                              {formData.file ? formData.file.name : "PDF (Max. 10MB)"}
-                            </p>
-                        </div>
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          accept=".pdf" 
-                          required 
-                          onChange={e => setFormData({ ...formData, file: e.target.files[0] })} 
-                        />
-                    </label>
-                </div>
+                <span className="text-sm font-medium text-text-muted">Archivo PDF</span>
+                <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-background/40 transition-colors hover:border-accent hover:bg-background/70 focus-within:border-accent">
+                  <div className="flex flex-col items-center justify-center pb-6 pt-5">
+                    <UploadCloud className="mb-3 h-8 w-8 text-text-muted" />
+                    <p className="mb-2 text-sm text-text-muted">
+                      <span className="font-semibold text-accent">Haz clic para subir</span> o arrastra
+                    </p>
+                    <p className="max-w-xs truncate text-xs text-text-muted">
+                      {formData.file ? formData.file.name : "PDF (Max. 10MB)"}
+                    </p>
+                  </div>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".pdf"
+                    required
+                    onChange={e => setFormData({ ...formData, file: e.target.files[0] })}
+                  />
+                </label>
               </div>
 
-              <div className="pt-2 flex justify-end gap-3">
-                <button 
-                  type="button" 
-                  onClick={onClose} 
-                  className="px-5 py-2.5 text-sm font-medium rounded-lg border border-border hover:bg-border transition-colors text-text-main"
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-lg border border-border px-5 py-2.5 text-sm font-medium text-text-main transition-colors hover:bg-border active:scale-95"
                 >
                   Cancelar
                 </button>
-                <button 
-                  type="submit" 
-                  disabled={loading || !formData.file} 
-                  className="px-5 py-2.5 text-sm font-medium rounded-lg bg-primary hover:bg-primary-dark transition-colors text-white flex items-center gap-2 disabled:opacity-50"
+                <button
+                  type="submit"
+                  disabled={loading || !formData.file}
+                  className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-primary-dark hover:shadow-glow active:scale-95 disabled:opacity-50"
                 >
-                  {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loading ? 'Subiendo...' : 'Publicar Apunte'}
                 </button>
               </div>
             </form>
           </motion.div>
-        </div>
+        </motion.div>
       )}
     </AnimatePresence>
   );

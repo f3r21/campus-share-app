@@ -8,25 +8,39 @@ services:
       repo: f3r21/campus-share-app
     source_dir: backend
     run_command: node server.js
-    http_port: 3001
+    http_port: 8080
+    health_check:
+      http_path: /api
+    # preserve_path_prefix: App Platform recorta el prefijo de la ruta por
+    # defecto (/api/x -> /x). Lo conservamos para que Express reciba /api/... y
+    # /uploads/... tal cual están registrados en server.js.
     routes:
       - path: /api
+        preserve_path_prefix: true
       - path: /uploads
+        preserve_path_prefix: true
+    # SECRETOS: configura los valores en el dashboard de DO (Settings ->
+    # backend -> Environment Variables, encriptados). NO los pongas aquí.
+    #   - DATABASE_URL (obligatorio; cadena de conexión Postgres de Neon/Supabase,
+    #     gratis. Debe forzar SSL, p. ej. ...neon.tech/db?sslmode=require).
+    #   - JWT_SECRET (obligatorio; genera uno con `openssl rand -base64 48`).
+    #   - SPACES_ACCESS_KEY / SPACES_SECRET_KEY / SPACES_BUCKET_NAME
+    #     (opcionales; necesarios solo para uploads persistentes en Spaces).
     envs:
       - key: DATABASE_URL
         scope: RUN_TIME
         type: SECRET
-        value: ${campus-share-db.DATABASE_URL}
+      - key: JWT_SECRET
+        scope: RUN_TIME
+        type: SECRET
       - key: SPACES_ACCESS_KEY
         scope: RUN_TIME
-        value: ""
+        type: SECRET
       - key: SPACES_SECRET_KEY
         scope: RUN_TIME
         type: SECRET
-        value: ""
       - key: SPACES_BUCKET_NAME
         scope: RUN_TIME
-        value: ""
 
 static_sites:
   - name: frontend
@@ -40,9 +54,3 @@ static_sites:
     catchall_document: index.html
     routes:
       - path: /
-
-databases:
-  - name: campus-share-db
-    engine: PG
-    version: "16"
-    production: false

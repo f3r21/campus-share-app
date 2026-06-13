@@ -29,9 +29,9 @@ function Dashboard({ auth, setAuth }) {
     setAuth(null);
   };
 
-  const filteredMaterials = materials.filter(m => 
-    m.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    m.course_name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredMaterials = materials.filter(m =>
+    (m.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (m.course_name || '').toLowerCase().includes(searchTerm.toLowerCase())
   ).sort((a, b) => {
     if (sortBy === 'upvotes') return b.upvotes - a.upvotes;
     if (sortBy === 'newest') return new Date(b.created_at) - new Date(a.created_at);
@@ -41,61 +41,68 @@ function Dashboard({ auth, setAuth }) {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-border bg-surface/50 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="bg-primary p-2 rounded-lg">
-              <BookOpen className="w-6 h-6 text-white" />
+      <header className="sticky top-0 z-40 border-b border-border/70 bg-surface/60 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-xl bg-gradient-to-br from-primary to-accent p-2 shadow-glow">
+              <BookOpen className="h-6 w-6 text-white" />
             </div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-white to-text-muted bg-clip-text text-transparent">
+            <span className="font-display text-xl font-bold tracking-tight text-text-main">
               CampusShare
-            </h1>
+            </span>
           </div>
-          
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-text-muted hidden sm:inline-block">
+
+          <div className="flex items-center gap-3 sm:gap-4">
+            <span className="hidden text-sm text-text-muted sm:inline-block">
               {auth.user.email}
             </span>
-            <button 
+            <button
+              type="button"
               onClick={() => setIsModalOpen(true)}
-              className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-card transition-all hover:bg-primary-dark hover:shadow-glow active:scale-95"
             >
               Subir Apunte
             </button>
-            <button 
+            <button
+              type="button"
               onClick={handleLogout}
-              className="p-2 text-text-muted hover:text-red-400 transition-colors bg-background rounded-lg border border-border hover:border-red-400/50"
+              className="rounded-lg border border-border bg-background/60 p-2 text-text-muted transition-colors hover:border-red-400/50 hover:text-red-400 active:scale-95"
               title="Cerrar sesión"
+              aria-label="Cerrar sesión"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="h-5 w-5" />
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
+      <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+        <div className="mb-10 flex flex-col justify-between gap-5 md:flex-row md:items-end">
           <div>
-            <h2 className="text-3xl font-bold mb-2">Apuntes Destacados</h2>
-            <p className="text-text-muted">Encuentra material de estudio de la comunidad UCSP</p>
+            <h2 className="font-display text-4xl font-bold leading-tight tracking-tight text-text-main">Apuntes Destacados</h2>
+            <p className="mt-2 text-text-muted">Encuentra material de estudio de la comunidad UCSP</p>
           </div>
-          <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+          <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row">
             <div className="relative w-full md:w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
-              <input 
-                type="text" 
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-text-muted" />
+              <label htmlFor="search-materials" className="sr-only">Buscar curso o tema</label>
+              <input
+                id="search-materials"
+                type="search"
                 placeholder="Buscar curso o tema..."
-                className="w-full bg-surface border border-border rounded-lg pl-10 pr-4 py-2.5 focus:outline-none focus:border-primary transition-colors text-sm"
+                className="w-full rounded-lg border border-border bg-surface/70 py-2.5 pl-10 pr-4 text-sm text-text-main backdrop-blur-md transition-colors placeholder:text-text-muted/70 hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
             <div className="relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none">
-                <ArrowUpDown className="w-4 h-4" />
+              <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted">
+                <ArrowUpDown className="h-4 w-4" />
               </div>
+              <label htmlFor="sort-materials" className="sr-only">Ordenar apuntes</label>
               <select
-                className="w-full bg-surface border border-border rounded-lg pl-9 pr-8 py-2.5 focus:outline-none focus:border-primary transition-colors text-sm cursor-pointer"
+                id="sort-materials"
+                className="w-full cursor-pointer rounded-lg border border-border bg-surface/70 py-2.5 pl-9 pr-8 text-sm text-text-main backdrop-blur-md transition-colors hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
               >
@@ -107,17 +114,17 @@ function Dashboard({ auth, setAuth }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredMaterials.map(material => (
-            <MaterialCard 
-              key={material.id} 
-              material={material} 
-              onUpvote={fetchMaterials} 
+            <MaterialCard
+              key={material.id}
+              material={material}
+              onUpvote={fetchMaterials}
               auth={auth}
             />
           ))}
           {filteredMaterials.length === 0 && (
-            <div className="col-span-full py-12 text-center text-text-muted border border-border border-dashed rounded-2xl bg-surface/30">
+            <div className="col-span-full rounded-2xl border border-dashed border-border bg-surface/30 py-16 text-center text-text-muted">
               No se encontraron apuntes. ¡Sé el primero en compartir!
             </div>
           )}
