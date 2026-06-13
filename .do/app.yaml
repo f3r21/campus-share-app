@@ -45,6 +45,10 @@ services:
         type: SECRET
       - key: SPACES_BUCKET_NAME
         scope: RUN_TIME
+      - key: STORAGE_PUBLIC_URL
+        scope: RUN_TIME
+      - key: SENTRY_DSN
+        scope: RUN_TIME
 
 static_sites:
   - name: frontend
@@ -61,6 +65,8 @@ static_sites:
     # backend. Configúralo en el dashboard de DO (componente frontend).
     envs:
       - key: VITE_GOOGLE_CLIENT_ID
+        scope: BUILD_TIME
+      - key: VITE_SENTRY_DSN
         scope: BUILD_TIME
     routes:
       - path: /

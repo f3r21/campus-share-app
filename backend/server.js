@@ -1,5 +1,23 @@
+require('dotenv').config();
+
+// --- SENTRY (monitoreo de errores) ---
+// Gated por env: NO-OP completo cuando SENTRY_DSN no está definido. Se inicializa
+// lo antes posible (antes de cargar Express y demás módulos) para que el SDK pueda
+// instrumentarlos correctamente. Si SENTRY_DSN está vacío, no se hace nada.
+const Sentry = require('@sentry/node');
+const SENTRY_ENABLED = !!process.env.SENTRY_DSN;
+if (SENTRY_ENABLED) {
+    Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        environment: process.env.NODE_ENV || 'production',
+        tracesSampleRate: 0.1
+    });
+    console.log('[sentry] ✅ Monitoreo de errores habilitado.');
+}
+
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -9,7 +27,6 @@ const rateLimit = require('express-rate-limit');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { Pool } = require('pg');
 const { OAuth2Client } = require('google-auth-library');
-require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -30,6 +47,20 @@ const UCSP_DOMAIN = 'ucsp.edu.pe';
 
 // Detrás del proxy de DigitalOcean: necesario para que el rate-limit use la IP real.
 app.set('trust proxy', 1);
+
+// --- CABECERAS DE SEGURIDAD (helmet) ---
+// La API sirve JSON (no HTML), así que se deshabilita la CSP de helmet para no
+// romper el JSON (la SPA define su propia CSP). Se mantienen las defensas
+// relevantes: HSTS, X-Content-Type-Options nosniff, frameguard deny y
+// Referrer-Policy. crossOriginResourcePolicy se desactiva para no interferir
+// con CORS ni con la descarga de /uploads desde otro origen.
+app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+    frameguard: { action: 'deny' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
+}));
 
 // CORS configurable: si FRONTEND_ORIGIN está definido, se restringe a ese origen.
 app.use(cors({ origin: process.env.FRONTEND_ORIGIN || true }));
@@ -323,14 +354,23 @@ app.post('/api/materials', uploadLimiter, authenticateToken, uploadSingle, async
 
         if (s3Client) {
             const fileStream = fs.createReadStream(req.file.path);
+            // R2 (cuando STORAGE_PUBLIC_URL está definido) controla el acceso
+            // público a nivel de bucket y NO admite ACLs por objeto; DO Spaces sí
+            // requiere public-read por objeto. Por eso la ACL es condicional.
             const uploadParams = {
                 Bucket: BUCKET_NAME,
                 Key: req.file.filename,
                 Body: fileStream,
-                ACL: 'public-read'
+                ...(process.env.STORAGE_PUBLIC_URL ? {} : { ACL: 'public-read' })
             };
             await s3Client.send(new PutObjectCommand(uploadParams));
-            fileUrl = `https://${BUCKET_NAME}.nyc3.digitaloceanspaces.com/${req.file.filename}`;
+            // URL pública configurable. R2 (Cloudflare) reutiliza el cliente S3 pero
+            // expone otra URL pública: define STORAGE_PUBLIC_URL con la base de tu
+            // bucket. Sin esa variable, se mantiene la URL de DO Spaces (nyc3).
+            const publicBase = process.env.STORAGE_PUBLIC_URL;
+            fileUrl = publicBase
+                ? `${publicBase.replace(/\/$/, '')}/${req.file.filename}`
+                : `https://${BUCKET_NAME}.nyc3.digitaloceanspaces.com/${req.file.filename}`;
         }
 
         const newMaterial = (await pool.query(
@@ -383,14 +423,43 @@ app.post('/api/materials/:id/like', authenticateToken, async (req, res) => {
     }
 });
 
-// Asegurar que las tablas existan antes de servir peticiones.
-initDb()
-    .then(() => {
-        app.listen(PORT, '0.0.0.0', () => {
-            console.log(`🚀 Servidor backend corriendo en puerto ${PORT} (0.0.0.0)`);
+// --- MANEJO DE ERRORES ---
+// El handler de Sentry debe registrarse DESPUÉS de las rutas y ANTES de cualquier
+// otro middleware de error. Es un NO-OP cuando SENTRY_DSN no está definido.
+if (SENTRY_ENABLED && typeof Sentry.setupExpressErrorHandler === 'function') {
+    Sentry.setupExpressErrorHandler(app);
+}
+
+// Middleware final de error: captura en Sentry (si está habilitado) y responde
+// un JSON limpio sin filtrar detalles internos al cliente.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+    if (SENTRY_ENABLED) {
+        Sentry.captureException(err);
+    }
+    console.error('[error]', err && err.message ? err.message : err);
+    if (res.headersSent) return next(err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+});
+
+// Arranque del servidor: solo cuando se ejecuta directamente (no al importarse
+// desde tests). Los tests importan { app, pool, initDb } y controlan initDb()
+// y el cierre del pool por su cuenta, sin abrir un listener ni llamar process.exit.
+const start = () => {
+    initDb()
+        .then(() => {
+            app.listen(PORT, '0.0.0.0', () => {
+                console.log(`🚀 Servidor backend corriendo en puerto ${PORT} (0.0.0.0)`);
+            });
+        })
+        .catch((error) => {
+            console.error("[startup] ❌ No se pudo inicializar la base de datos:", error.message);
+            process.exit(1);
         });
-    })
-    .catch((error) => {
-        console.error("[startup] ❌ No se pudo inicializar la base de datos:", error.message);
-        process.exit(1);
-    });
+};
+
+if (require.main === module) {
+    start();
+}
+
+module.exports = { app, pool, initDb };
