@@ -24,7 +24,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { Pool } = require('pg');
 const { OAuth2Client } = require('google-auth-library');
 
@@ -309,7 +309,7 @@ app.get('/api/courses', async (req, res) => {
 // Materiales
 app.get('/api/materials', optionalAuth, async (req, res) => {
     try {
-        const { sort = 'upvotes', query = '' } = req.query;
+        const { sort = 'upvotes', query = '', mine } = req.query;
         // Whitelist del ordenamiento: nunca interpolar input del usuario.
         // 'upvotes' usa el alias calculado (conteo de likes), no la columna obsoleta.
         let orderBy = 'upvotes DESC';
@@ -331,9 +331,22 @@ app.get('/api/materials', optionalAuth, async (req, res) => {
             LEFT JOIN users u ON m.user_id = u.id
         `;
 
+        // Componer cláusulas WHERE manteniendo la numeración de placeholders válida.
+        // "mine=true" solo aplica si hay un token válido (req.user); si no, se ignora
+        // y se devuelve el feed normal (no es un error).
+        const clauses = [];
+        if (mine === 'true' && req.user) {
+            // Reutiliza $1 (userId) para filtrar por dueño.
+            clauses.push('m.user_id = $1');
+        }
         if (query) {
-            sql += ` WHERE m.title ILIKE $2 OR m.description ILIKE $2 OR c.name ILIKE $2`;
+            // El término de búsqueda es el siguiente placeholder.
+            const searchIdx = params.length + 1;
+            clauses.push(`(m.title ILIKE $${searchIdx} OR m.description ILIKE $${searchIdx} OR c.name ILIKE $${searchIdx})`);
             params.push(`%${query}%`);
+        }
+        if (clauses.length > 0) {
+            sql += ` WHERE ${clauses.join(' AND ')}`;
         }
 
         sql += ` ORDER BY ${orderBy}`;
@@ -421,6 +434,135 @@ app.post('/api/materials/:id/like', authenticateToken, async (req, res) => {
         )).rows[0].count;
 
         res.json({ liked, upvotes });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Re-selecciona la fila completa de un material con el mismo shape que el feed
+// (course_name, user_email, upvotes y liked_by_me para el usuario solicitante).
+const selectMaterialRow = async (materialId, viewerId) => {
+    return (await pool.query(
+        `
+        SELECT m.id, m.course_id, m.user_id, m.title, m.description, m.file_url, m.created_at,
+               c.name AS course_name, u.email AS user_email,
+               (SELECT COUNT(*) FROM likes l WHERE l.material_id = m.id)::int AS upvotes,
+               EXISTS (SELECT 1 FROM likes l WHERE l.material_id = m.id AND l.user_id = $2) AS liked_by_me
+        FROM materials m
+        LEFT JOIN courses c ON m.course_id = c.id
+        LEFT JOIN users u ON m.user_id = u.id
+        WHERE m.id = $1
+        `,
+        [materialId, viewerId]
+    )).rows[0];
+};
+
+// Eliminar un material propio. La propiedad se valida en el servidor con el id
+// del usuario del JWT; nunca se confía en el cliente. Los likes se borran en
+// cascada por la FK. El borrado del archivo almacenado es best-effort: un fallo
+// de almacenamiento NO bloquea ni revierte el borrado en la base de datos.
+app.delete('/api/materials/:id', authenticateToken, async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'ID inválido' });
+
+    try {
+        const material = (await pool.query(
+            'SELECT id, user_id, file_url FROM materials WHERE id = $1',
+            [id]
+        )).rows[0];
+        if (!material) return res.status(404).json({ error: 'No encontrado' });
+        if (material.user_id !== req.user.id) {
+            return res.status(403).json({ error: 'No tienes permiso para eliminar este material.' });
+        }
+
+        // Los likes se eliminan en cascada (FK ON DELETE CASCADE).
+        await pool.query('DELETE FROM materials WHERE id = $1', [id]);
+
+        // Best-effort: borrar el objeto almacenado. La clave es el último segmento
+        // de la URL del archivo. Cualquier fallo aquí se registra y se ignora.
+        const key = material.file_url ? material.file_url.split('/').pop() : null;
+        if (key) {
+            if (s3Client) {
+                try {
+                    await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: key }));
+                } catch (storageErr) {
+                    console.error('[materials/delete] No se pudo borrar el objeto en R2/S3:', storageErr.message);
+                }
+            } else {
+                try {
+                    await fs.promises.unlink(path.join(uploadDir, key));
+                } catch (unlinkErr) {
+                    // Ignorar: el archivo local puede no existir (almacenamiento efímero).
+                }
+            }
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Editar un material propio. Solo se actualizan los campos provistos; todas las
+// consultas son parametrizadas (sin interpolar valores). La propiedad se valida
+// en el servidor con el id del usuario del JWT.
+app.patch('/api/materials/:id', authenticateToken, async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'ID inválido' });
+
+    try {
+        const material = (await pool.query('SELECT user_id FROM materials WHERE id = $1', [id])).rows[0];
+        if (!material) return res.status(404).json({ error: 'No encontrado' });
+        if (material.user_id !== req.user.id) {
+            return res.status(403).json({ error: 'No tienes permiso para editar este material.' });
+        }
+
+        const { title, description, course_id } = req.body;
+
+        // Construir un SET parametrizado solo con los campos provistos.
+        const setClauses = [];
+        const params = [];
+        let idx = 1;
+
+        if (title !== undefined) {
+            if (typeof title !== 'string' || title.trim() === '') {
+                return res.status(400).json({ error: 'El título no puede estar vacío.' });
+            }
+            setClauses.push(`title = $${idx++}`);
+            params.push(title);
+        }
+        if (description !== undefined) {
+            if (description !== null && typeof description !== 'string') {
+                return res.status(400).json({ error: 'Descripción inválida.' });
+            }
+            setClauses.push(`description = $${idx++}`);
+            params.push(description);
+        }
+        if (course_id !== undefined) {
+            const cid = Number(course_id);
+            if (!Number.isInteger(cid) || cid <= 0) {
+                return res.status(400).json({ error: 'Curso inválido.' });
+            }
+            setClauses.push(`course_id = $${idx++}`);
+            params.push(cid);
+        }
+
+        if (setClauses.length === 0) {
+            return res.status(400).json({ error: 'No hay campos para actualizar.' });
+        }
+
+        // Aplicar el UPDATE; el id va como último placeholder.
+        params.push(id);
+        await pool.query(
+            `UPDATE materials SET ${setClauses.join(', ')} WHERE id = $${idx}`,
+            params
+        );
+
+        // Re-seleccionar la fila completa con el mismo shape que el feed.
+        const updated = await selectMaterialRow(id, req.user.id);
+        res.json(updated);
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Error interno del servidor' });

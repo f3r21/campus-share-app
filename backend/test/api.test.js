@@ -142,3 +142,142 @@ describe('materiales (rutas protegidas)', () => {
         expect(res.status).toBe(404);
     });
 });
+
+describe('editar / eliminar material propio + ?mine=true', () => {
+    let tokenA;
+    let tokenB;
+    let userIdA;
+    let materialId;
+
+    beforeAll(async () => {
+        // Usuario A (dueño) y usuario B (no dueño): emails únicos por ejecución.
+        const emailA = `ownerA_${Date.now()}@ucsp.edu.pe`;
+        const emailB = `otherB_${Date.now()}@ucsp.edu.pe`;
+        const userA = (await pool.query(
+            'INSERT INTO users (email) VALUES ($1) RETURNING id, email',
+            [emailA]
+        )).rows[0];
+        const userB = (await pool.query(
+            'INSERT INTO users (email) VALUES ($1) RETURNING id, email',
+            [emailB]
+        )).rows[0];
+        userIdA = userA.id;
+        tokenA = jwt.sign({ id: userA.id, email: userA.email }, process.env.JWT_SECRET);
+        tokenB = jwt.sign({ id: userB.id, email: userB.email }, process.env.JWT_SECRET);
+
+        // A sube un material que se usará en todo el flujo.
+        const res = await request(app)
+            .post('/api/materials')
+            .set('Authorization', `Bearer ${tokenA}`)
+            .field('course_id', '1')
+            .field('title', 'Material de A')
+            .field('description', 'Original')
+            .attach('file', Buffer.from('%PDF-1.4 contenido de prueba'), {
+                filename: 'material-a.pdf',
+                contentType: 'application/pdf'
+            });
+        expect(res.status).toBe(201);
+        materialId = res.body.id;
+    }, SETUP_TIMEOUT_MS);
+
+    it('PATCH /api/materials/:id como dueño A -> 200 y cambia el título', async () => {
+        const res = await request(app)
+            .patch(`/api/materials/${materialId}`)
+            .set('Authorization', `Bearer ${tokenA}`)
+            .send({ title: 'Título editado por A' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.id).toBe(materialId);
+        expect(res.body.title).toBe('Título editado por A');
+        // El shape debe incluir las columnas del feed.
+        expect(res.body).toHaveProperty('course_name');
+        expect(res.body).toHaveProperty('user_email');
+        expect(res.body).toHaveProperty('upvotes');
+        expect(res.body).toHaveProperty('liked_by_me');
+    });
+
+    it('PATCH /api/materials/:id con título vacío -> 400', async () => {
+        const res = await request(app)
+            .patch(`/api/materials/${materialId}`)
+            .set('Authorization', `Bearer ${tokenA}`)
+            .send({ title: '   ' });
+
+        expect(res.status).toBe(400);
+    });
+
+    it('PATCH /api/materials/:id como NO dueño B -> 403', async () => {
+        const res = await request(app)
+            .patch(`/api/materials/${materialId}`)
+            .set('Authorization', `Bearer ${tokenB}`)
+            .send({ title: 'Intento de B' });
+
+        expect(res.status).toBe(403);
+    });
+
+    it('PATCH /api/materials/:id inexistente -> 404', async () => {
+        const res = await request(app)
+            .patch('/api/materials/999999999')
+            .set('Authorization', `Bearer ${tokenA}`)
+            .send({ title: 'No existe' });
+
+        expect(res.status).toBe(404);
+    });
+
+    it('GET /api/materials?mine=true como A devuelve solo materiales de A', async () => {
+        const res = await request(app)
+            .get('/api/materials')
+            .query({ mine: 'true' })
+            .set('Authorization', `Bearer ${tokenA}`);
+
+        expect(res.status).toBe(200);
+        expect(Array.isArray(res.body)).toBe(true);
+        expect(res.body.length).toBeGreaterThan(0);
+        for (const item of res.body) {
+            expect(item.user_id).toBe(userIdA);
+        }
+        expect(res.body.some((m) => m.id === materialId)).toBe(true);
+    });
+
+    it('GET /api/materials?mine=true sin token devuelve el feed normal (no error)', async () => {
+        const res = await request(app)
+            .get('/api/materials')
+            .query({ mine: 'true' });
+
+        expect(res.status).toBe(200);
+        expect(Array.isArray(res.body)).toBe(true);
+    });
+
+    it('DELETE /api/materials/:id como NO dueño B -> 403', async () => {
+        const res = await request(app)
+            .delete(`/api/materials/${materialId}`)
+            .set('Authorization', `Bearer ${tokenB}`);
+
+        expect(res.status).toBe(403);
+    });
+
+    it('DELETE /api/materials/:id inexistente -> 404', async () => {
+        const res = await request(app)
+            .delete('/api/materials/999999999')
+            .set('Authorization', `Bearer ${tokenA}`);
+
+        expect(res.status).toBe(404);
+    });
+
+    it('DELETE /api/materials/:id como dueño A -> 200 { success:true }', async () => {
+        const res = await request(app)
+            .delete(`/api/materials/${materialId}`)
+            .set('Authorization', `Bearer ${tokenA}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ success: true });
+    });
+
+    it('GET /api/materials ya no incluye el material eliminado', async () => {
+        const res = await request(app)
+            .get('/api/materials')
+            .set('Authorization', `Bearer ${tokenA}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.some((m) => m.id === materialId)).toBe(false);
+    });
+});

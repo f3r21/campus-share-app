@@ -10,19 +10,22 @@ function Dashboard({ auth, setAuth }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('upvotes');
+  const [scope, setScope] = useState('all'); // 'all' | 'mine'
 
   const fetchMaterials = () => {
     const headers = auth?.token ? { 'Authorization': `Bearer ${auth.token}` } : {};
-    fetch('/api/materials', { headers })
+    const endpoint = scope === 'mine' ? '/api/materials?mine=true' : '/api/materials';
+    fetch(endpoint, { headers })
       .then(res => res.json())
       .then(data => setMaterials(Array.isArray(data) ? data : []))
       .catch(err => console.error('Error fetching materials:', err));
   };
 
+  // Refetch whenever the active scope ("Todos" / "Mis apuntes") or token changes.
   useEffect(() => {
     fetchMaterials();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [scope, auth?.token]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -93,7 +96,41 @@ function Dashboard({ auth, setAuth }) {
             </p>
           </div>
 
-          <div className="flex w-full flex-col gap-3 sm:flex-row md:w-auto">
+          <div className="flex w-full flex-col gap-3 md:w-auto">
+            <div
+              role="tablist"
+              aria-label="Filtrar apuntes"
+              className="inline-flex self-start rounded-[0.375rem] border border-line bg-surface p-0.5"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={scope === 'all'}
+                onClick={() => setScope('all')}
+                className={`rounded-[0.3rem] px-4 py-1.5 text-xs font-medium uppercase tracking-[0.1em] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                  scope === 'all'
+                    ? 'bg-accent text-paper'
+                    : 'text-muted hover:text-ink'
+                }`}
+              >
+                Todos los apuntes
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={scope === 'mine'}
+                onClick={() => setScope('mine')}
+                className={`rounded-[0.3rem] px-4 py-1.5 text-xs font-medium uppercase tracking-[0.1em] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
+                  scope === 'mine'
+                    ? 'bg-accent text-paper'
+                    : 'text-muted hover:text-ink'
+                }`}
+              >
+                Mis apuntes
+              </button>
+            </div>
+
+            <div className="flex w-full flex-col gap-3 sm:flex-row">
             <div className="relative w-full sm:w-64">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
               <label htmlFor="search-materials" className="sr-only">Buscar curso o tema</label>
@@ -120,6 +157,7 @@ function Dashboard({ auth, setAuth }) {
                 <option value="oldest">Más antiguos</option>
               </select>
             </div>
+            </div>
           </div>
         </div>
 
@@ -129,15 +167,26 @@ function Dashboard({ auth, setAuth }) {
               const isFeatured = index === 0 && filteredMaterials.length > 2;
               return (
                 <div key={material.id} className={isFeatured ? 'lg:col-span-2' : ''}>
-                  <MaterialCard material={material} auth={auth} featured={isFeatured} />
+                  <MaterialCard
+                    material={material}
+                    auth={auth}
+                    featured={isFeatured}
+                    onChanged={fetchMaterials}
+                  />
                 </div>
               );
             })}
           </div>
         ) : (
           <div className="border border-dashed border-line py-20 text-center">
-            <p className="font-display text-2xl font-medium text-ink">Aún no hay apuntes aquí.</p>
-            <p className="mt-2 text-sm text-muted">Sé el primero en compartir material con la comunidad.</p>
+            <p className="font-display text-2xl font-medium text-ink">
+              {scope === 'mine' ? 'Todavía no has subido apuntes.' : 'Aún no hay apuntes aquí.'}
+            </p>
+            <p className="mt-2 text-sm text-muted">
+              {scope === 'mine'
+                ? 'Comparte tu primer material con la comunidad de la UCSP.'
+                : 'Sé el primero en compartir material con la comunidad.'}
+            </p>
           </div>
         )}
       </main>

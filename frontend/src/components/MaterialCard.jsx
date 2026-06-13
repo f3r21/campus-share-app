@@ -1,12 +1,19 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Heart, Download } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Heart, Download, Pencil, Trash2, Loader2 } from 'lucide-react';
+import EditModal from './EditModal';
 
-export default function MaterialCard({ material, auth, featured = false }) {
+export default function MaterialCard({ material, auth, featured = false, onChanged }) {
   const [liked, setLiked] = useState(Boolean(material.liked_by_me));
   const [count, setCount] = useState(material.upvotes ?? 0);
   const [pending, setPending] = useState(false);
 
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+
+  const isOwner = auth?.user?.id != null && material.user_id === auth.user.id;
   const uploader = material.user_email ? material.user_email.split('@')[0] : 'Anónimo';
 
   const handleLike = async () => {
@@ -39,7 +46,41 @@ export default function MaterialCard({ material, auth, featured = false }) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!auth?.token || deleting) return;
+
+    setDeleting(true);
+    setActionError(null);
+
+    try {
+      const res = await fetch(`/api/materials/${material.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${auth.token}` },
+      });
+      if (!res.ok) throw new Error(`Borrado falló: ${res.status}`);
+      setConfirmingDelete(false);
+      onChanged?.();
+    } catch (err) {
+      console.error('Error al borrar el apunte:', err);
+      setActionError('No se pudo borrar el apunte. Inténtalo de nuevo.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleSaved = () => {
+    onChanged?.();
+  };
+
   return (
+    <>
+    <EditModal
+      isOpen={isEditOpen}
+      onClose={() => setIsEditOpen(false)}
+      material={material}
+      auth={auth}
+      onSaved={handleSaved}
+    />
     <motion.article
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -108,6 +149,83 @@ export default function MaterialCard({ material, auth, featured = false }) {
           Descargar
         </a>
       </div>
+
+      {isOwner && (
+        <div className="mt-3 border-t border-line pt-3">
+          <AnimatePresence mode="wait" initial={false}>
+            {confirmingDelete ? (
+              <motion.div
+                key="confirm"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                role="alertdialog"
+                aria-label="Confirmar borrado del apunte"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm"
+              >
+                <span className="text-muted">¿Seguro que quieres borrarlo?</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    aria-label="Confirmar borrado"
+                    className="inline-flex items-center gap-1.5 font-medium text-accent underline decoration-line decoration-1 underline-offset-4 transition-colors hover:decoration-accent disabled:opacity-60"
+                  >
+                    {deleting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    {deleting ? 'Borrando…' : 'Sí, borrar'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setConfirmingDelete(false); setActionError(null); }}
+                    disabled={deleting}
+                    aria-label="Cancelar borrado"
+                    className="font-medium text-muted transition-colors hover:text-ink disabled:opacity-60"
+                  >
+                    No
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="actions"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="flex items-center gap-4 text-xs uppercase tracking-[0.1em]"
+              >
+                <button
+                  type="button"
+                  onClick={() => setIsEditOpen(true)}
+                  aria-label={`Editar el apunte ${material.title}`}
+                  className="inline-flex items-center gap-1.5 font-medium text-muted transition-colors hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Editar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  aria-label={`Borrar el apunte ${material.title}`}
+                  className="inline-flex items-center gap-1.5 font-medium text-muted transition-colors hover:text-accent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Borrar
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {actionError && (
+            <p role="alert" className="mt-2 text-xs text-accent">
+              {actionError}
+            </p>
+          )}
+        </div>
+      )}
     </motion.article>
+    </>
   );
 }
