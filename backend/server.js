@@ -148,6 +148,20 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
+// Auth opcional: NO rechaza si falta el token. Solo establece req.user cuando
+// hay un token válido. Nunca responde 401/403; siempre continúa.
+const optionalAuth = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) return next();
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (!err) req.user = user;
+        next();
+    });
+};
+
 // --- RUTAS DE LA API ---
 
 // Healthcheck para DigitalOcean
@@ -238,25 +252,33 @@ app.get('/api/courses', async (req, res) => {
 });
 
 // Materiales
-app.get('/api/materials', async (req, res) => {
+app.get('/api/materials', optionalAuth, async (req, res) => {
     try {
         const { sort = 'upvotes', query = '' } = req.query;
         // Whitelist del ordenamiento: nunca interpolar input del usuario.
-        let orderBy = 'm.upvotes DESC';
+        // 'upvotes' usa el alias calculado (conteo de likes), no la columna obsoleta.
+        let orderBy = 'upvotes DESC';
         if (sort === 'newest') orderBy = 'm.created_at DESC';
         if (sort === 'oldest') orderBy = 'm.created_at ASC';
 
+        // $1 = id del usuario solicitante (0 si no autenticado; ningún user tiene id 0).
+        const userId = req.user?.id || 0;
+        const params = [userId];
+
+        // Columnas explícitas: NO exponemos m.* (incluye la columna obsoleta upvotes).
         let sql = `
-            SELECT m.*, c.name AS course_name, u.email AS user_email
+            SELECT m.id, m.course_id, m.user_id, m.title, m.description, m.file_url, m.created_at,
+                   c.name AS course_name, u.email AS user_email,
+                   (SELECT COUNT(*) FROM likes l WHERE l.material_id = m.id)::int AS upvotes,
+                   EXISTS (SELECT 1 FROM likes l WHERE l.material_id = m.id AND l.user_id = $1) AS liked_by_me
             FROM materials m
             LEFT JOIN courses c ON m.course_id = c.id
             LEFT JOIN users u ON m.user_id = u.id
         `;
-        let params = [];
 
         if (query) {
-            sql += ` WHERE m.title ILIKE $1 OR m.description ILIKE $2 OR c.name ILIKE $3`;
-            params = [`%${query}%`, `%${query}%`, `%${query}%`];
+            sql += ` WHERE m.title ILIKE $2 OR m.description ILIKE $2 OR c.name ILIKE $2`;
+            params.push(`%${query}%`);
         }
 
         sql += ` ORDER BY ${orderBy}`;
@@ -300,15 +322,39 @@ app.post('/api/materials', uploadLimiter, authenticateToken, uploadSingle, async
     }
 });
 
-app.post('/api/materials/:id/upvote', authenticateToken, async (req, res) => {
-    const id = parseInt(req.params.id);
+// Toggle de "me gusta" (corazón) por usuario. Inserta o elimina la fila en likes.
+app.post('/api/materials/:id/like', authenticateToken, async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return res.status(400).json({ error: 'ID inválido' });
+
+    const userId = req.user.id;
     try {
-        const updated = (await pool.query(
-            'UPDATE materials SET upvotes = upvotes + 1 WHERE id = $1 RETURNING upvotes',
-            [id]
+        const material = (await pool.query('SELECT id FROM materials WHERE id = $1', [id])).rows[0];
+        if (!material) return res.status(404).json({ error: 'No encontrado' });
+
+        const existing = (await pool.query(
+            'SELECT 1 FROM likes WHERE user_id = $1 AND material_id = $2',
+            [userId, id]
         )).rows[0];
-        if (updated) res.json({ success: true, upvotes: updated.upvotes });
-        else res.status(404).json({ error: 'No encontrado' });
+
+        let liked;
+        if (existing) {
+            await pool.query('DELETE FROM likes WHERE user_id = $1 AND material_id = $2', [userId, id]);
+            liked = false;
+        } else {
+            await pool.query(
+                'INSERT INTO likes (user_id, material_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+                [userId, id]
+            );
+            liked = true;
+        }
+
+        const upvotes = (await pool.query(
+            'SELECT COUNT(*)::int AS count FROM likes WHERE material_id = $1',
+            [id]
+        )).rows[0].count;
+
+        res.json({ liked, upvotes });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Error interno del servidor' });

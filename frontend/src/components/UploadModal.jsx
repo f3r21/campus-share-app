@@ -20,7 +20,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, auth }) 
       fetch('/api/careers')
         .then(res => res.json())
         .then(data => setCareers(data))
-        .catch(err => console.error("Error fetching careers:", err));
+        .catch(err => console.error('Error fetching careers:', err));
     }
   }, [isOpen]);
 
@@ -29,7 +29,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, auth }) 
       fetch(`/api/courses?career_id=${formData.career_id}`)
         .then(res => res.json())
         .then(data => setCourses(data))
-        .catch(err => console.error("Error fetching courses:", err));
+        .catch(err => console.error('Error fetching courses:', err));
     } else {
       setCourses([]);
       setFormData(prev => ({ ...prev, course_id: '' }));
@@ -70,6 +70,9 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, auth }) 
     }
   };
 
+  const fieldClass =
+    'rounded-[0.375rem] border border-line bg-paper px-3 py-2.5 text-sm text-ink transition-colors placeholder:text-muted/60 hover:border-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent';
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -77,30 +80,35 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, auth }) 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+          transition={{ duration: 0.18 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
           onClick={onClose}
         >
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-labelledby="upload-modal-heading"
-            initial={{ opacity: 0, scale: 0.95, y: 24 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 24 }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg overflow-hidden rounded-3xl border border-border/70 bg-surface/85 shadow-card backdrop-blur-2xl"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto border border-ink bg-surface"
           >
-            <div className="flex items-center justify-between border-b border-border/70 bg-surface/40 p-6">
-              <h2 id="upload-modal-heading" className="flex items-center gap-2 font-display text-xl font-semibold tracking-tight">
-                <UploadCloud className="h-6 w-6 text-accent" />
-                Subir Apunte
-              </h2>
+            <div className="flex items-center justify-between border-b border-line px-6 py-5">
+              <div>
+                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-accent">
+                  Nuevo aporte
+                </p>
+                <h2 id="upload-modal-heading" className="mt-1 font-display text-2xl font-medium tracking-tight text-ink">
+                  Subir Apunte
+                </h2>
+              </div>
               <button
                 type="button"
                 onClick={onClose}
                 aria-label="Cerrar"
-                className="rounded-full p-1.5 text-text-muted transition-colors hover:bg-border hover:text-text-main active:scale-90"
+                className="rounded-[0.375rem] border border-line p-1.5 text-muted transition-colors hover:border-ink hover:text-ink"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -108,18 +116,18 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, auth }) 
 
             <form onSubmit={handleSubmit} className="space-y-5 p-6">
               {error && (
-                <div role="alert" className="rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-400">
+                <div role="alert" className="border-l-2 border-accent bg-paper p-3 text-sm text-accent">
                   {error}
                 </div>
               )}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="upload-career" className="text-sm font-medium text-text-muted">Carrera</label>
+                  <label htmlFor="upload-career" className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Carrera</label>
                   <select
                     id="upload-career"
                     required
-                    className="rounded-lg border border-border bg-background/60 px-3 py-2.5 text-sm text-text-main transition-colors hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    className={fieldClass}
                     value={formData.career_id}
                     onChange={e => setFormData({ ...formData, career_id: e.target.value })}
                   >
@@ -129,12 +137,12 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, auth }) 
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label htmlFor="upload-course" className="text-sm font-medium text-text-muted">Curso</label>
+                  <label htmlFor="upload-course" className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Curso</label>
                   <select
                     id="upload-course"
                     required
                     disabled={!formData.career_id}
-                    className="rounded-lg border border-border bg-background/60 px-3 py-2.5 text-sm text-text-main transition-colors hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`${fieldClass} disabled:cursor-not-allowed disabled:opacity-50`}
                     value={formData.course_id}
                     onChange={e => setFormData({ ...formData, course_id: e.target.value })}
                   >
@@ -145,40 +153,40 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, auth }) 
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="upload-title" className="text-sm font-medium text-text-muted">Título del Apunte</label>
+                <label htmlFor="upload-title" className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Título del Apunte</label>
                 <input
                   id="upload-title"
                   type="text"
                   required
                   placeholder="Ej. Resumen Primer Parcial"
-                  className="rounded-lg border border-border bg-background/60 px-4 py-2.5 text-text-main transition-colors placeholder:text-text-muted/60 hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  className={fieldClass}
                   value={formData.title}
                   onChange={e => setFormData({ ...formData, title: e.target.value })}
                 />
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="upload-description" className="text-sm font-medium text-text-muted">Descripción (Opcional)</label>
+                <label htmlFor="upload-description" className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Descripción (Opcional)</label>
                 <textarea
                   id="upload-description"
                   rows="3"
                   placeholder="Detalles sobre el contenido..."
-                  className="resize-none rounded-lg border border-border bg-background/60 px-4 py-2.5 text-text-main transition-colors placeholder:text-text-muted/60 hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  className={`${fieldClass} resize-none`}
                   value={formData.description}
                   onChange={e => setFormData({ ...formData, description: e.target.value })}
                 />
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-text-muted">Archivo PDF</span>
-                <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-background/40 transition-colors hover:border-accent hover:bg-background/70 focus-within:border-accent">
-                  <div className="flex flex-col items-center justify-center pb-6 pt-5">
-                    <UploadCloud className="mb-3 h-8 w-8 text-text-muted" />
-                    <p className="mb-2 text-sm text-text-muted">
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Archivo PDF</span>
+                <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-[0.375rem] border border-dashed border-line bg-paper transition-colors hover:border-accent focus-within:border-accent">
+                  <div className="flex flex-col items-center justify-center px-4 text-center">
+                    <UploadCloud className="mb-2.5 h-7 w-7 text-muted" />
+                    <p className="text-sm text-muted">
                       <span className="font-semibold text-accent">Haz clic para subir</span> o arrastra
                     </p>
-                    <p className="max-w-xs truncate text-xs text-text-muted">
-                      {formData.file ? formData.file.name : "PDF (Max. 10MB)"}
+                    <p className="mt-1 max-w-xs truncate text-xs text-muted">
+                      {formData.file ? formData.file.name : 'PDF (Max. 10MB)'}
                     </p>
                   </div>
                   <input
@@ -191,18 +199,18 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess, auth }) 
                 </label>
               </div>
 
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex justify-end gap-3 pt-1">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="rounded-lg border border-border px-5 py-2.5 text-sm font-medium text-text-main transition-colors hover:bg-border active:scale-95"
+                  className="rounded-[0.375rem] border border-line px-5 py-2.5 text-sm font-medium text-ink transition-colors hover:border-ink"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={loading || !formData.file}
-                  className="flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-card transition-all hover:bg-primary-dark hover:shadow-glow active:scale-95 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-[0.375rem] bg-accent px-5 py-2.5 text-sm font-medium text-paper transition-colors hover:bg-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
                 >
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loading ? 'Subiendo...' : 'Publicar Apunte'}

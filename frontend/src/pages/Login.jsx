@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { LogIn } from 'lucide-react';
 
 export default function Login({ setAuth }) {
   const [email, setEmail] = useState('');
@@ -14,17 +13,17 @@ export default function Login({ setAuth }) {
     e.preventDefault();
     setLoading(true);
     setError('');
-    
+
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-      
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al iniciar sesión');
-      
+
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       setAuth({ token: data.token, user: data.user });
@@ -37,51 +36,55 @@ export default function Login({ setAuth }) {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-4">
+    <main className="flex min-h-screen items-center justify-center px-5 py-12">
       <motion.section
-        initial={{ opacity: 0, y: 24 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
         aria-labelledby="login-heading"
-        className="w-full max-w-md rounded-3xl border border-border/70 bg-surface/70 p-8 shadow-card backdrop-blur-xl"
+        className="w-full max-w-md border border-line bg-surface p-9"
       >
-        <div className="mb-6 flex justify-center">
-          <div className="rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 p-4 ring-1 ring-inset ring-primary/25">
-            <LogIn className="h-8 w-8 text-primary" />
-          </div>
-        </div>
-        <h2 id="login-heading" className="text-center text-3xl font-bold tracking-tight">Bienvenido de vuelta</h2>
-        <p className="mb-8 mt-2 text-center text-text-muted">Ingresa a CampusShare UCSP</p>
+        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-accent">
+          CampusShare UCSP
+        </p>
+        <h1 id="login-heading" className="mt-3 text-4xl font-medium leading-tight tracking-tight text-ink">
+          Bienvenido de vuelta
+        </h1>
+        <span aria-hidden="true" className="mt-4 mb-6 block h-px w-12 bg-accent" />
 
         {error && (
-          <div role="alert" className="mb-6 rounded-lg border border-red-500/50 bg-red-500/10 p-3 text-sm text-red-400">
+          <div role="alert" className="mb-6 border-l-2 border-accent bg-paper p-3 text-sm text-accent">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={handleLogin} className="space-y-5">
           <div>
-            <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium text-text-muted">Correo Institucional</label>
+            <label htmlFor="login-email" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              Correo institucional
+            </label>
             <input
               id="login-email"
               type="email"
               required
               autoComplete="email"
               placeholder="usuario@ucsp.edu.pe"
-              className="w-full rounded-lg border border-border bg-background/60 px-4 py-3 text-text-main transition-colors placeholder:text-text-muted/60 hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+              className="w-full rounded-[0.375rem] border border-line bg-paper px-4 py-3 text-ink transition-colors placeholder:text-muted/60 hover:border-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
           <div>
-            <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-text-muted">Contraseña</label>
+            <label htmlFor="login-password" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              Contraseña
+            </label>
             <input
               id="login-password"
               type="password"
               required
               autoComplete="current-password"
               placeholder="••••••••"
-              className="w-full rounded-lg border border-border bg-background/60 px-4 py-3 text-text-main transition-colors placeholder:text-text-muted/60 hover:border-border focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+              className="w-full rounded-[0.375rem] border border-line bg-paper px-4 py-3 text-ink transition-colors placeholder:text-muted/60 hover:border-muted focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
@@ -89,14 +92,17 @@ export default function Login({ setAuth }) {
           <button
             type="submit"
             disabled={loading}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-3 font-medium text-white shadow-card transition-all hover:bg-primary-dark hover:shadow-glow active:scale-[0.98] disabled:opacity-50"
+            className="mt-2 w-full rounded-[0.375rem] bg-accent py-3 font-medium text-paper transition-colors hover:bg-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
           >
             {loading ? 'Iniciando...' : 'Iniciar Sesión'}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-text-muted">
-          ¿No tienes una cuenta? <Link to="/register" className="font-medium text-accent transition-colors hover:text-primary hover:underline">Regístrate</Link>
+        <p className="mt-7 text-sm text-muted">
+          ¿No tienes una cuenta?{' '}
+          <Link to="/register" className="font-medium text-accent underline decoration-1 underline-offset-4 transition-colors hover:text-ink">
+            Regístrate
+          </Link>
         </p>
       </motion.section>
     </main>

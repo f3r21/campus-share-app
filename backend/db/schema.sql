@@ -31,3 +31,12 @@ CREATE TABLE IF NOT EXISTS materials (
     upvotes INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- "Me gusta" por usuario y material. La PK (user_id, material_id) garantiza
+-- un único corazón por usuario y material.
+CREATE TABLE IF NOT EXISTS likes (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, material_id)
+);
