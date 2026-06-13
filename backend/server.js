@@ -79,8 +79,14 @@ const authenticateToken = (req, res, next) => {
 // --- RUTAS DE LA API ---
 
 // Healthcheck para DigitalOcean
-app.get('/', (req, res) => res.status(200).send('OK'));
-app.get('/api', (req, res) => res.status(200).send('OK'));
+app.get('/', (req, res) => {
+    console.log("Healthcheck hit on /");
+    res.status(200).send('OK');
+});
+app.get('/api', (req, res) => {
+    console.log("Healthcheck hit on /api");
+    res.status(200).send('OK');
+});
 
 app.get('/api/init', async (req, res) => {
     try {
