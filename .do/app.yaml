@@ -16,7 +16,7 @@ services:
       - key: DATABASE_URL
         scope: RUN_TIME
         type: SECRET
-        value: ${campus-db.DATABASE_URL}
+        value: ${campus-share-db.DATABASE_URL}
       - key: SPACES_ACCESS_KEY
         scope: RUN_TIME
         value: ""
@@ -42,7 +42,7 @@ static_sites:
       - path: /
 
 databases:
-  - name: campus-db
+  - name: campus-share-db
     engine: PG
-    version: "14"
+    version: "16"
     production: false
