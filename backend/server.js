@@ -27,6 +27,9 @@ if (process.env.DATABASE_URL) {
     
     const initDb = async () => {
         try {
+            const schemas = await pool.query('SELECT schema_name, schema_owner FROM information_schema.schemata');
+            console.log("ESQUEMAS DISPONIBLES:", JSON.stringify(schemas.rows));
+            
             const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
             const seed = fs.readFileSync(path.join(__dirname, 'db', 'seed.sql'), 'utf8');
             await pool.query(schema);
