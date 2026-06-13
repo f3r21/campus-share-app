@@ -239,6 +239,7 @@ app.post('/api/materials/:id/upvote', authenticateToken, async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Servidor backend corriendo en puerto ${PORT}`);
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Servidor backend corriendo en puerto ${PORT} (0.0.0.0)`);
 });
