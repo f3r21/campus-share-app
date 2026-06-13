@@ -27,8 +27,9 @@ if (process.env.DATABASE_URL) {
     
     const initDb = async () => {
         try {
-            const schemas = await pool.query('SELECT schema_name, schema_owner FROM information_schema.schemata');
-            console.log("ESQUEMAS DISPONIBLES:", JSON.stringify(schemas.rows));
+            const user = await pool.query('SELECT current_user, current_database()');
+            console.log("USER INFO:", JSON.stringify(user.rows));
+            console.log("ALL ENV VARS:", Object.keys(process.env).filter(k => k.includes('DATABASE') || k.includes('DB') || k.includes('POSTGRES')));
             
             const schema = fs.readFileSync(path.join(__dirname, 'db', 'schema.sql'), 'utf8');
             const seed = fs.readFileSync(path.join(__dirname, 'db', 'seed.sql'), 'utf8');
