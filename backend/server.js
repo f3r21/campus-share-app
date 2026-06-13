@@ -124,15 +124,7 @@ if (process.env.SPACES_ACCESS_KEY && process.env.SPACES_SECRET_KEY) {
 }
 const BUCKET_NAME = process.env.SPACES_BUCKET_NAME || "campus-share-bucket";
 
-// Diagnóstico de almacenamiento al arranque (sin filtrar secretos: solo presencia).
-console.log(
-    '[storage] s3=' + !!s3Client +
-    ' access=' + (process.env.SPACES_ACCESS_KEY ? 'set(' + process.env.SPACES_ACCESS_KEY.length + ')' : 'MISSING') +
-    ' secret=' + (process.env.SPACES_SECRET_KEY ? 'set(' + process.env.SPACES_SECRET_KEY.length + ')' : 'MISSING') +
-    ' endpoint=' + (process.env.SPACES_ENDPOINT || 'MISSING') +
-    ' bucket=' + (process.env.SPACES_BUCKET_NAME || 'MISSING') +
-    ' publicUrl=' + (process.env.STORAGE_PUBLIC_URL ? 'set' : 'MISSING')
-);
+console.log('[storage] almacenamiento de archivos: ' + (s3Client ? 'R2/S3 activo' : 'local efímero (sin credenciales S3)'));
 
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
@@ -377,9 +369,11 @@ app.post('/api/materials', uploadLimiter, authenticateToken, uploadSingle, async
             // URL pública configurable. R2 (Cloudflare) reutiliza el cliente S3 pero
             // expone otra URL pública: define STORAGE_PUBLIC_URL con la base de tu
             // bucket. Sin esa variable, se mantiene la URL de DO Spaces (nyc3).
-            const publicBase = process.env.STORAGE_PUBLIC_URL;
+            // .trim() + quitar barras finales: tolera espacios/saltos accidentales
+            // en STORAGE_PUBLIC_URL (un espacio sobrante rompía el enlace).
+            const publicBase = (process.env.STORAGE_PUBLIC_URL || '').trim().replace(/\/+$/, '');
             fileUrl = publicBase
-                ? `${publicBase.replace(/\/$/, '')}/${req.file.filename}`
+                ? `${publicBase}/${req.file.filename}`
                 : `https://${BUCKET_NAME}.nyc3.digitaloceanspaces.com/${req.file.filename}`;
         }
 
