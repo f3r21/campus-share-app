@@ -13,7 +13,16 @@
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 
-const { app, pool, initDb } = require('../server');
+// GOOGLE_CLIENT_ID se fija ANTES de requerir la app: server.js lo captura en una
+// const al cargar el módulo. Sin esto, /api/auth/google respondería 503 (no
+// configurado). Con un valor presente, un credential FALSO sigue fallando con 401
+// (token inválido), así que los tests existentes que esperan [401, 503] no se rompen;
+// y el bloque de whitelist stubea verifyIdToken para simular un payload UCSP válido.
+if (!process.env.GOOGLE_CLIENT_ID) {
+    process.env.GOOGLE_CLIENT_ID = 'test-client-id.apps.googleusercontent.com';
+}
+
+const { app, pool, initDb, googleClient } = require('../server');
 
 // initDb puede crear el esquema y sembrar datos en una BD nueva: dale margen.
 const SETUP_TIMEOUT_MS = 60000;
@@ -67,6 +76,174 @@ describe('POST /api/auth/google', () => {
         expect([401, 503]).toContain(res.status);
         expect(res.status).not.toBe(200);
         expect(res.body.token).toBeUndefined();
+    });
+});
+
+// Whitelist de códigos de matrícula (registro en 2 pasos con Google).
+//
+// El token de Google no se puede verificar de verdad en los tests, así que se
+// stubea googleClient.verifyIdToken (vi.spyOn) para devolver un payload UCSP
+// falso (email_verified true, hd 'ucsp.edu.pe', email @ucsp.edu.pe). El spy se
+// crea en beforeAll y se restaura en afterAll para NO afectar a los demás tests
+// de autenticación (que esperan que un credential falso falle con 401/503).
+//
+// process.env.ENFORCE_STUDENT_CODES se fija por test y se restaura a su valor
+// previo en afterAll. Las rutas leen el flag por petición, así que el toggle
+// surte efecto sin reiniciar el proceso.
+describe('whitelist de códigos de matrícula (registro 2 pasos)', () => {
+    let verifySpy;
+    let stubEmail;
+    const prevEnforce = process.env.ENFORCE_STUDENT_CODES;
+
+    // Cambia el email que devolverá el stub para el siguiente request.
+    const setStubEmail = (email) => {
+        stubEmail = email;
+    };
+
+    beforeAll(async () => {
+        // Stub: cualquier credential => payload UCSP válido con el email actual.
+        verifySpy = vi.spyOn(googleClient, 'verifyIdToken').mockImplementation(async () => ({
+            getPayload: () => ({
+                email: stubEmail,
+                email_verified: true,
+                hd: 'ucsp.edu.pe'
+            })
+        }));
+
+        // Sembrar un par de códigos de prueba directamente vía el pool.
+        // Idempotente entre ejecuciones contra una misma BD: primero se libera
+        // cualquier student_code previo en users (el índice único parcial impediría
+        // re-reclamar el código si quedara colgado de una ejecución anterior), luego
+        // se reinsertan los códigos limpios (used_by = NULL).
+        await pool.query("UPDATE users SET student_code = NULL WHERE student_code IN ('TEST-001', 'TEST-002')");
+        await pool.query("DELETE FROM student_codes WHERE code IN ('TEST-001', 'TEST-002')");
+        await pool.query("INSERT INTO student_codes (code) VALUES ('TEST-001'), ('TEST-002')");
+    }, SETUP_TIMEOUT_MS);
+
+    afterAll(async () => {
+        if (verifySpy) verifySpy.mockRestore();
+        // Restaurar el valor previo de la env (o eliminarla si no existía).
+        if (prevEnforce === undefined) {
+            delete process.env.ENFORCE_STUDENT_CODES;
+        } else {
+            process.env.ENFORCE_STUDENT_CODES = prevEnforce;
+        }
+        // Limpieza de los códigos de prueba.
+        await pool.query("DELETE FROM student_codes WHERE code IN ('TEST-001', 'TEST-002')");
+    });
+
+    it('ENFORCE on + email nuevo -> /google responde { needsCode:true } y NO crea usuario', async () => {
+        process.env.ENFORCE_STUDENT_CODES = 'true';
+        const email = `nuevo_${Date.now()}@ucsp.edu.pe`;
+        setStubEmail(email);
+
+        const res = await request(app)
+            .post('/api/auth/google')
+            .send({ credential: 'fake-google-credential' });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ needsCode: true });
+        expect(res.body.token).toBeUndefined();
+
+        // No debe existir el usuario en la BD.
+        const found = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0];
+        expect(found).toBeUndefined();
+    });
+
+    it('ENFORCE on + /register con código válido sin usar -> 200 token, crea usuario y marca used_by', async () => {
+        process.env.ENFORCE_STUDENT_CODES = 'true';
+        const email = `claim_${Date.now()}@ucsp.edu.pe`;
+        setStubEmail(email);
+
+        const res = await request(app)
+            .post('/api/auth/google/register')
+            .send({ credential: 'fake-google-credential', code: 'test-001' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.token).toBeDefined();
+        expect(res.body.user).toBeDefined();
+        expect(res.body.user.email).toBe(email);
+        const newId = res.body.user.id;
+        expect(newId).toBeDefined();
+
+        // El usuario existe y el código quedó reclamado por ese usuario.
+        const user = (await pool.query('SELECT id, student_code FROM users WHERE email = $1', [email])).rows[0];
+        expect(user).toBeDefined();
+        expect(user.student_code).toBe('TEST-001');
+
+        const codeRow = (await pool.query('SELECT used_by, claimed_at FROM student_codes WHERE code = $1', ['TEST-001'])).rows[0];
+        expect(codeRow.used_by).toBe(newId);
+        expect(codeRow.claimed_at).not.toBeNull();
+    });
+
+    it('ENFORCE on + /register reutilizando ese código con OTRO email -> 403 "ya fue usado"', async () => {
+        process.env.ENFORCE_STUDENT_CODES = 'true';
+        const email = `otro_${Date.now()}@ucsp.edu.pe`;
+        setStubEmail(email);
+
+        const res = await request(app)
+            .post('/api/auth/google/register')
+            .send({ credential: 'fake-google-credential', code: 'TEST-001' });
+
+        expect(res.status).toBe(403);
+        expect(res.body.error).toBe('Ese código ya fue usado en otra cuenta.');
+        expect(res.body.token).toBeUndefined();
+
+        // No se creó el usuario.
+        const found = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0];
+        expect(found).toBeUndefined();
+    });
+
+    it('ENFORCE on + /register con código desconocido -> 403 "no válido"', async () => {
+        process.env.ENFORCE_STUDENT_CODES = 'true';
+        const email = `desconocido_${Date.now()}@ucsp.edu.pe`;
+        setStubEmail(email);
+
+        const res = await request(app)
+            .post('/api/auth/google/register')
+            .send({ credential: 'fake-google-credential', code: 'NO-EXISTE-999' });
+
+        expect(res.status).toBe(403);
+        expect(res.body.error).toBe('Código de matrícula no válido.');
+        expect(res.body.token).toBeUndefined();
+
+        const found = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0];
+        expect(found).toBeUndefined();
+    });
+
+    it('ENFORCE on + usuario existente -> /google devuelve token SIN pedir código', async () => {
+        process.env.ENFORCE_STUDENT_CODES = 'true';
+        const email = `existente_${Date.now()}@ucsp.edu.pe`;
+        // Crear el usuario previamente (como un alumno ya registrado).
+        await pool.query('INSERT INTO users (email) VALUES ($1)', [email]);
+        setStubEmail(email);
+
+        const res = await request(app)
+            .post('/api/auth/google')
+            .send({ credential: 'fake-google-credential' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.needsCode).toBeUndefined();
+        expect(res.body.token).toBeDefined();
+        expect(res.body.user.email).toBe(email);
+    });
+
+    it('ENFORCE off + email nuevo -> /google crea el usuario directamente y devuelve token', async () => {
+        process.env.ENFORCE_STUDENT_CODES = 'false';
+        const email = `libre_${Date.now()}@ucsp.edu.pe`;
+        setStubEmail(email);
+
+        const res = await request(app)
+            .post('/api/auth/google')
+            .send({ credential: 'fake-google-credential' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.needsCode).toBeUndefined();
+        expect(res.body.token).toBeDefined();
+        expect(res.body.user.email).toBe(email);
+
+        const found = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0];
+        expect(found).toBeDefined();
     });
 });
 

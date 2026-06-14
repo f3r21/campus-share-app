@@ -4,3 +4,10 @@ dist/
 .DS_Store
 backend/database.sqlite
 backend/uploads/
+
+# Padrones de alumnos: contienen PII (DNI, nombres) y los códigos válidos.
+# NUNCA subir al repo (exponer códigos válidos rompería la lista blanca).
+*.xlsx
+*.xls
+*.csv
+student_codes_seed.sql

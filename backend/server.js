@@ -45,6 +45,20 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 const UCSP_DOMAIN = 'ucsp.edu.pe';
 
+// Whitelist de códigos de matrícula. Gated por env: solo cuando vale 'true' se
+// exige un código del padrón para registrar usuarios NUEVOS. Cualquier otro valor
+// (o ausencia) => comportamiento original (alta libre de cuentas @ucsp.edu.pe).
+// Actívalo SOLO cuando la tabla student_codes ya esté cargada con el padrón; si no,
+// nadie nuevo podrá registrarse.
+const ENFORCE_STUDENT_CODES = process.env.ENFORCE_STUDENT_CODES === 'true';
+console.log('[startup] whitelist de códigos de matrícula: ' + (ENFORCE_STUDENT_CODES ? 'ACTIVA (solo el padrón puede registrarse)' : 'inactiva (alta libre @ucsp.edu.pe)'));
+
+// Se lee el flag por petición (no se cachea) para que la configuración por entorno
+// tenga efecto sin reiniciar el proceso; los tests alternan ENFORCE_STUDENT_CODES
+// entre casos. En producción el valor del entorno es estable, así que el
+// comportamiento es idéntico al de la const documentada arriba.
+const isEnforcingStudentCodes = () => process.env.ENFORCE_STUDENT_CODES === 'true';
+
 // Detrás del proxy de DigitalOcean: necesario para que el rate-limit use la IP real.
 app.set('trust proxy', 1);
 
@@ -214,22 +228,21 @@ app.get('/api', (req, res) => {
     res.status(200).send('OK');
 });
 
-// Inicio de sesión con Google (Google Identity Services).
-// El frontend envía el ID token (JWT firmado por Google) y aquí se verifica
-// criptográficamente firma, audience y expiración con google-auth-library.
-// Solo se admiten cuentas institucionales de la UCSP (@ucsp.edu.pe).
-app.post('/api/auth/google', authLimiter, async (req, res) => {
-    const { credential } = req.body;
-    if (!credential) {
-        return res.status(400).json({ error: "Falta el credential de Google" });
-    }
+// Verificación + autorización de un ID token de Google para la UCSP. Helper
+// compartido por /api/auth/google y /api/auth/google/register para que ambas
+// rutas verifiquen IDÉNTICAMENTE (nunca se confía en el email sin re-verificar
+// el token). Devuelve un resultado discriminado:
+//   { ok: false, status, error }  -> el caller responde res.status(status).json({ error })
+//   { ok: true, email }           -> email institucional normalizado (lowercase)
+// status: 503 sin GOOGLE_CLIENT_ID, 401 token inválido/expirado, 403 no-UCSP.
+const verifyUcspGoogleToken = async (credential) => {
     if (!GOOGLE_CLIENT_ID) {
         console.error('[auth/google] ❌ GOOGLE_CLIENT_ID no configurado. Define la variable de entorno con el mismo Client ID que el frontend (VITE_GOOGLE_CLIENT_ID).');
-        return res.status(503).json({ error: "Autenticación con Google no configurada" });
+        return { ok: false, status: 503, error: 'Autenticación con Google no configurada' };
     }
 
-    // Paso 1: verificación criptográfica del ID token (firma de Google,
-    // audience = Client ID, expiry). Un fallo aquí => token inválido/expirado => 401.
+    // Verificación criptográfica del ID token (firma de Google, audience = Client
+    // ID, expiry). Un fallo aquí => token inválido/expirado => 401.
     let payload;
     try {
         const ticket = await googleClient.verifyIdToken({
@@ -239,40 +252,172 @@ app.post('/api/auth/google', authLimiter, async (req, res) => {
         payload = ticket.getPayload();
     } catch (error) {
         console.error('[auth/google] Token de Google inválido o expirado:', error.message);
-        return res.status(401).json({ error: "Token de Google inválido" });
+        return { ok: false, status: 401, error: 'Token de Google inválido' };
     }
 
-    // Paso 2: autorización + alta/login. Errores aquí (p. ej. BD) => 500 genérico.
-    try {
-        // Correo verificado + dominio Workspace (hd) de la UCSP. hd es la claim
-        // autoritativa del dominio; el sufijo del email se valida como defensa
-        // en profundidad.
-        const email = payload.email;
-        const isUcsp =
-            payload.email_verified === true &&
-            payload.hd === UCSP_DOMAIN &&
-            !!email &&
-            email.toLowerCase().endsWith(`@${UCSP_DOMAIN}`);
+    // Correo verificado + dominio Workspace (hd) de la UCSP. hd es la claim
+    // autoritativa del dominio; el sufijo del email se valida como defensa
+    // en profundidad.
+    const email = payload.email;
+    const isUcsp =
+        payload.email_verified === true &&
+        payload.hd === UCSP_DOMAIN &&
+        !!email &&
+        email.toLowerCase().endsWith(`@${UCSP_DOMAIN}`);
 
-        if (!isUcsp) {
-            return res.status(403).json({ error: "Debes iniciar sesión con tu cuenta institucional de la UCSP (@ucsp.edu.pe)" });
+    if (!isUcsp) {
+        return { ok: false, status: 403, error: 'Debes iniciar sesión con tu cuenta institucional de la UCSP (@ucsp.edu.pe)' };
+    }
+
+    return { ok: true, email: email.toLowerCase() };
+};
+
+// Emite el JWT de sesión (mismo shape de siempre) para un usuario { id, email }.
+const issueAuthToken = (user) => jwt.sign(
+    { id: user.id, email: user.email },
+    JWT_SECRET,
+    { expiresIn: '24h' }
+);
+
+// Inicio de sesión con Google (Google Identity Services).
+// El frontend envía el ID token (JWT firmado por Google) y aquí se verifica
+// criptográficamente firma, audience y expiración con google-auth-library.
+// Solo se admiten cuentas institucionales de la UCSP (@ucsp.edu.pe).
+//
+// Con ENFORCE_STUDENT_CODES activo, los usuarios YA registrados inician sesión
+// normalmente, pero un email NUEVO no crea cuenta: se responde 200 { needsCode:true }
+// para que el frontend pida el código de matrícula y llame a /register.
+app.post('/api/auth/google', authLimiter, async (req, res) => {
+    const { credential } = req.body;
+    if (!credential) {
+        return res.status(400).json({ error: "Falta el credential de Google" });
+    }
+
+    // Paso 1: verificación + autorización del token (idéntica en ambas rutas).
+    const verified = await verifyUcspGoogleToken(credential);
+    if (!verified.ok) {
+        return res.status(verified.status).json({ error: verified.error });
+    }
+
+    // Paso 2: login / alta. Errores aquí (p. ej. BD) => 500 genérico.
+    try {
+        const normalizedEmail = verified.email;
+
+        // Usuario existente => login directo (no se exige código aunque ENFORCE esté activo).
+        const user = (await pool.query('SELECT id, email FROM users WHERE email = $1', [normalizedEmail])).rows[0];
+        if (user) {
+            const token = issueAuthToken(user);
+            return res.json({ token, user: { id: user.id, email: user.email } });
         }
 
-        const normalizedEmail = email.toLowerCase();
+        // Usuario NUEVO con whitelist activa: no se crea aquí; el frontend debe
+        // pedir el código y registrarse vía /api/auth/google/register.
+        if (isEnforcingStudentCodes()) {
+            return res.status(200).json({ needsCode: true });
+        }
 
-        // Buscar usuario por email; si no existe, crearlo (sin password_hash).
-        let user = (await pool.query('SELECT id, email FROM users WHERE email = $1', [normalizedEmail])).rows[0];
-        if (!user) {
-            user = (await pool.query(
+        // Sin whitelist (comportamiento original): se crea el usuario y se inicia sesión.
+        const created = (await pool.query(
+            'INSERT INTO users (email) VALUES ($1) RETURNING id, email',
+            [normalizedEmail]
+        )).rows[0];
+        const token = issueAuthToken(created);
+        res.json({ token, user: { id: created.id, email: created.email } });
+    } catch (error) {
+        console.error('[auth/google] Error procesando el inicio de sesión:', error.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+// Registro con código de matrícula (segundo paso del alta cuando la whitelist
+// está activa). Re-verifica el token de Google (nunca se confía en el email del
+// cliente) y reclama un código del padrón de forma atómica y race-safe.
+app.post('/api/auth/google/register', authLimiter, async (req, res) => {
+    const { credential, code } = req.body;
+    if (!credential) {
+        return res.status(400).json({ error: "Falta el credential de Google" });
+    }
+    if (isEnforcingStudentCodes() && (typeof code !== 'string' || code.trim() === '')) {
+        return res.status(400).json({ error: "Falta el código de matrícula" });
+    }
+
+    // Re-verificación + autorización del token (idéntica a /api/auth/google).
+    const verified = await verifyUcspGoogleToken(credential);
+    if (!verified.ok) {
+        return res.status(verified.status).json({ error: verified.error });
+    }
+
+    const normalizedEmail = verified.email;
+
+    try {
+        // Idempotente: si el usuario ya existe, se inicia sesión sin tocar códigos.
+        const existing = (await pool.query('SELECT id, email FROM users WHERE email = $1', [normalizedEmail])).rows[0];
+        if (existing) {
+            const token = issueAuthToken(existing);
+            return res.json({ token, user: { id: existing.id, email: existing.email } });
+        }
+
+        // Sin whitelist: se crea el usuario ignorando el código (alta libre).
+        if (!isEnforcingStudentCodes()) {
+            const created = (await pool.query(
                 'INSERT INTO users (email) VALUES ($1) RETURNING id, email',
                 [normalizedEmail]
             )).rows[0];
+            const token = issueAuthToken(created);
+            return res.json({ token, user: { id: created.id, email: created.email } });
         }
 
-        const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '24h' });
-        res.json({ token, user: { id: user.id, email: user.email } });
+        // Whitelist activa: reclamar el código ATÓMICAMENTE dentro de una
+        // transacción sobre un único cliente del pool. SELECT ... FOR UPDATE
+        // bloquea la fila del código para que dos registros concurrentes no
+        // puedan reclamar el mismo código (race-safe). On any error: ROLLBACK +
+        // 500 genérico; el cliente se libera SIEMPRE en finally.
+        const normalizedCode = code.trim().toUpperCase();
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const codeRow = (await client.query(
+                'SELECT used_by FROM student_codes WHERE code = $1 FOR UPDATE',
+                [normalizedCode]
+            )).rows[0];
+
+            if (!codeRow) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ error: "Código de matrícula no válido." });
+            }
+            if (codeRow.used_by !== null) {
+                await client.query('ROLLBACK');
+                return res.status(403).json({ error: "Ese código ya fue usado en otra cuenta." });
+            }
+
+            const created = (await client.query(
+                'INSERT INTO users (email, student_code) VALUES ($1, $2) RETURNING id, email',
+                [normalizedEmail, normalizedCode]
+            )).rows[0];
+
+            await client.query(
+                'UPDATE student_codes SET used_by = $1, claimed_at = NOW() WHERE code = $2',
+                [created.id, normalizedCode]
+            );
+
+            await client.query('COMMIT');
+
+            const token = issueAuthToken(created);
+            return res.json({ token, user: { id: created.id, email: created.email } });
+        } catch (txError) {
+            try {
+                await client.query('ROLLBACK');
+            } catch (rollbackError) {
+                console.error('[auth/google/register] Error en ROLLBACK:', rollbackError.message);
+            }
+            console.error('[auth/google/register] Error reclamando el código:', txError.message);
+            return res.status(500).json({ error: 'Error interno del servidor' });
+        } finally {
+            client.release();
+        }
     } catch (error) {
-        console.error('[auth/google] Error procesando el inicio de sesión:', error.message);
+        console.error('[auth/google/register] Error procesando el registro:', error.message);
         res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
@@ -608,4 +753,6 @@ if (require.main === module) {
     start();
 }
 
-module.exports = { app, pool, initDb };
+// googleClient se exporta para que los tests puedan stubear verifyIdToken
+// (vi.spyOn) y simular un payload UCSP sin un token real de Google.
+module.exports = { app, pool, initDb, googleClient };

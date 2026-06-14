@@ -27,6 +27,24 @@ CREATE TABLE IF NOT EXISTS users (
 -- por lo que es seguro ejecutarlo en cada arranque vía initDb.
 ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
 
+-- Padrón de códigos de matrícula (whitelist). Se carga fuera de banda (out-of-band)
+-- directamente en la BD; este esquema NO siembra datos. Cada código se "reclama"
+-- (used_by + claimed_at) la primera vez que un alumno se registra con él.
+CREATE TABLE IF NOT EXISTS student_codes (
+    -- code se almacena normalizado (mayúsculas + sin espacios), igual que la
+    -- comparación de la app (code.trim().toUpperCase()). El CHECK rechaza cargas
+    -- no normalizadas, evitando que un padrón mal cargado nunca haga match.
+    code TEXT PRIMARY KEY CHECK (code = upper(btrim(code))),
+    used_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    claimed_at TIMESTAMPTZ
+);
+
+-- Vincula a cada usuario con el código que usó al registrarse (nullable: los
+-- usuarios previos al whitelist no lo tienen). El índice único parcial impide
+-- que dos cuentas compartan el mismo código.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS student_code TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS users_student_code_uniq ON users(student_code) WHERE student_code IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS materials (
     id SERIAL PRIMARY KEY,
     course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,

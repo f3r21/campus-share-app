@@ -60,6 +60,26 @@ Se configuran en el **dashboard de DigitalOcean**, por componente (Settings → 
 
 ---
 
+## 3.b Lista blanca de códigos de alumno (restricción a alumnos)
+
+El acceso puede restringirse a **alumnos con código del padrón** (no profes/administrativos), porque los correos `@ucsp.edu.pe` no distinguen el rol.
+
+**Cómo funciona:** con `ENFORCE_STUDENT_CODES=true` en el backend, un usuario nuevo entra con Google y luego debe ingresar su **código de matrícula**, que se valida contra la tabla `student_codes` (que exista y que **no** haya sido usado). Cada código se usa **una sola vez**. Los ya registrados entran directo.
+
+**Cargar / actualizar el padrón** (⚠️ datos sensibles — DNI/nombres — **NUNCA** al repo):
+1. El padrón llega en un Excel (p. ej. `CCOMP.xlsx`). Está **gitignored**; consérvalo seguro, no lo subas.
+2. Extrae **solo la columna de códigos**, normalízalos a **MAYÚSCULAS + sin espacios**, y genera `INSERT INTO student_codes (code) VALUES (...) ON CONFLICT (code) DO NOTHING;`.
+3. Córrelo en el **SQL Editor de Neon** (ese SQL no se versiona). La tabla tiene un `CHECK` que **rechaza** códigos no normalizados, así que un padrón mal cargado falla en voz alta.
+4. Activa la restricción: `ENFORCE_STUDENT_CODES=true` en DO (backend) → redeploy.
+
+**Alcance actual:** solo **Ciencia de la Computación (CCOMP)**, ~519 códigos. Para incluir otras carreras, consigue sus padrones y carga sus códigos igual.
+
+**Mantenimiento por semestre:** cada ciclo entran alumnos nuevos → agrega sus códigos a `student_codes`, o no podrán registrarse.
+
+**Quitar la restricción:** pon `ENFORCE_STUDENT_CODES` en cualquier valor ≠ `true` (o bórralo) → vuelve a alta libre para cualquier `@ucsp.edu.pe`.
+
+---
+
 ## 4. Costos y free tier
 
 | Componente | Costo | Cobertura |

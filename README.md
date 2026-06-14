@@ -101,6 +101,7 @@ El servidor de desarrollo de Vite proxea `/api` y `/uploads` hacia `http://local
 | `STORAGE_PUBLIC_URL` | backend | runtime | No | URL pública base del bucket para los enlaces de descarga (p. ej. la URL `r2.dev` de Cloudflare R2). Si se omite, se usa la URL de DigitalOcean Spaces. |
 | `SENTRY_DSN` | backend | runtime | No | DSN de Sentry para monitoreo de errores del backend. Si se omite, Sentry queda desactivado (no-op). |
 | `VITE_SENTRY_DSN` | frontend | build-time | No | DSN de Sentry para el frontend. Público; no-op si se omite. |
+| `ENFORCE_STUDENT_CODES` | backend | runtime | No | `'true'` activa la lista blanca de códigos de matrícula (solo alumnos con código del padrón pueden registrarse). Cualquier otro valor = alta libre para cualquier `@ucsp.edu.pe`. Actívalo SOLO con la tabla `student_codes` ya cargada (ver HANDOVER). |
 
 > **Nota:** las claves `SPACES_*` aplican a cualquier almacenamiento S3-compatible. Para Cloudflare R2 usa el endpoint, las credenciales y el bucket de R2. El almacenamiento de archivos es **opcional**: sin él los uploads son efímeros.
 
